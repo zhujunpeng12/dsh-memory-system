@@ -55,7 +55,8 @@ jobs:
         run: |
           set +e
           HITS=$(grep -rInE "31207|投顾工作台|southern|etfapp|euler|tushare|cli_anything|C:\\\\Users\\\\[0-9]" \
-            --include="*.py" --include="*.js" --include="*.json" --include="*.md" --include="*.yml" --include="*.yaml" . || true)
+            --include="*.py" --include="*.js" --include="*.json" --include="*.md" --include="*.yml" --include="*.yaml" \
+            --exclude-dir=.git --exclude-dir=.github . || true)
           if [ -n "$HITS" ]; then
             echo "::error::Personal identifiers found:"
             echo "$HITS"
