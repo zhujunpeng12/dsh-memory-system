@@ -25,6 +25,33 @@ Agent 会话之间默认是失忆的。本系统用 **六层机制** 把「记�
 | 治理只读 | L0-L3 边界，自动收集证据、永不自动删改 |
 | 零依赖 | 标准库 + Markdown 文件，Windows/macOS/Linux 可跑 |
 
+## 作为 DSH 插件安装（推荐）
+
+插件形态把记忆能力直接注册为 Agent 工具，并随 DSH 装配自动生效：
+
+```bash
+# 从 dsh-plugin topic 仓库安装（审核后发布时可用）
+dsh plugin add dsh-vault-memory
+
+# 或本地开发安装
+npm pack            # 生成 tarball
+dsh plugin add ./dsh-vault-memory-0.1.0.tgz
+```
+
+安装后重启 Harness，Agent 获得 5 个记忆工具：
+
+| 工具 | 作用 | 写操作 |
+|---|---|---|
+| `memory_bootstrap` | 生成 ≤14KB 热记忆包 | 只读 |
+| `memory_recall` | 冷召回（exact + 中文 BM25） | 只读 |
+| `memory_gate` | 机械门禁检查 | 只读 |
+| `memory_govern` | 治理候选扫描 | 只读 |
+| `memory_write` | 授权事务写入（默认 dry-run） | 需确认 |
+
+`memory_write` 默认只预览，`apply=true` 且经用户确认后才落盘；`tools/pre-execute` 钩子会强制弹确认。所有工具通过 `MEMORY_VAULT` / `DSH_HOME` 环境变量定位你的记忆库。
+
+> 手动 hooks 注入（可选）：参考 `hooks.example.json` 把 `hook-first-prompt.py` 挂到 `UserPromptSubmit`，每个新会话首个提示自动注入热包。
+
 ## 快速开始
 
 ### 1. 准备目录结构
@@ -95,6 +122,10 @@ python vault-guard\recall.py --query "继续上次的XXX" --cwd "C:\path\to\proj
 ## 目录结构
 
 ```
+├── index.js                    # DSH host 插件：5 个记忆工具 + 写操作护栏
+├── package.json                # npm 包声明（dsh-vault-memory）
+├── dsh.plugin.json             # DSH 插件 manifest
+├── cordis.patch.yml            # DSH bundle 装配补丁
 ├── vault-guard/
 │   ├── bootstrap.py            # 热记忆包生成（≤14KB）
 │   ├── hook-first-prompt.py    # UserPromptSubmit hooks：按 session 注入一次热包 + 冷包触发
@@ -111,6 +142,7 @@ python vault-guard\recall.py --query "继续上次的XXX" --cwd "C:\path\to\proj
 │   ├── govern.py               # 只读治理扫描（重复/冲突/过期/体量/生命周期）
 │   ├── trajectory-review.py    # 轨迹复盘候选（用户纠正 = 硬信号）
 │   └── test_*.py               # 回归测试（unittest，无外部依赖）
+├── templates/                  # 脱敏记忆库骨架（10 分钟搭出自己的记忆系统）
 ├── hooks.example.json          # DSH hooks 装配示例
 ├── .env.example                # 环境变量示例
 └── LICENSE

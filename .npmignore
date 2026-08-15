@@ -1,0 +1,9 @@
+# Python 缓存（绝不进包）
+__pycache__/
+*.py[cod]
+
+# 本地开发产物
+*.tgz
+.env
+.DS_Store
+Thumbs.db

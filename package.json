@@ -1,0 +1,48 @@
+{
+  "name": "dsh-vault-memory",
+  "version": "0.1.0",
+  "description": "Local-first persistent memory infrastructure for DeepSeek Harness: bounded hot-memory bootstrap, explainable cold recall (exact + Chinese BM25), lease-lock transactional writes, read-only governance, and trajectory review. Pure Python + Markdown, zero external dependencies.",
+  "type": "module",
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "dsh.plugin.json",
+    "cordis.patch.yml",
+    "vault-guard/*.py",
+    "vault-guard/README.md",
+    "templates/",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "*"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    }
+  },
+  "scripts": {
+    "check": "node --check index.js && python -m py_compile vault-guard/*.py && python -m unittest discover -s vault-guard -p \"test_*.py\""
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "memory",
+    "memory-system",
+    "agent-memory",
+    "local-first",
+    "obsidian"
+  ],
+  "license": "MIT"
+}
