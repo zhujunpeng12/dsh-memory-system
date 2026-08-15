@@ -10,15 +10,15 @@ jobs:
     name: Tests (Python + Node)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Python syntax check
         run: python -c "import glob,py_compile; [py_compile.compile(f, doraise=True) for f in glob.glob('vault-guard/*.py')+glob.glob('plugins/evidence-ledger/*.py')]"
@@ -39,7 +39,7 @@ jobs:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -52,7 +52,7 @@ jobs:
     name: Sanitization scan (personal identifiers)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Scan for personal identifiers
         run: |
