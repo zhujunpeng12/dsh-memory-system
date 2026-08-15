@@ -5,6 +5,10 @@ __pycache__/
 build/
 dist/
 
+# Node / npm（库项目不提交依赖与锁文件）
+node_modules/
+package-lock.json
+
 # 记忆数据（永远不进仓库；仅锚定仓库根，不误伤 templates/vault/memory）
 /.vault.lock
 /.vault-transactions/
