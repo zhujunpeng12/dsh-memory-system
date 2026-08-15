@@ -1,7 +1,7 @@
 # dsh-vault-memory bundle layer: mount the persistent memory plugin.
 # Host-only; no client UI in v0.1. Agent tools (memory_bootstrap,
-# memory_recall, memory_gate, memory_govern, memory_write) are registered
-# per agent via index.js when the bundle is loaded.
+# memory_recall, memory_gate, memory_govern, memory_trajectory_review,
+# memory_write) are registered per agent via index.js when the bundle is loaded.
 - insert:
     - id: dsh-vault-memory
       name: 'dsh-vault-memory'

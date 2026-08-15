@@ -1,6 +1,6 @@
 # dsh-memory-system — DSH 持久记忆基础设施
 
-> 一套给 DeepSeek Harness (DSH) Agent 用的本地优先记忆系统：启动热记忆注入、可解释冷召回、租约锁保护的事务写入、只读治理与轨迹复盘。纯 Python + Markdown 文件，无数据库、无向量服务、无外部依赖。
+> 一套给 DeepSeek Harness (DSH) Agent 用的本地优先记忆系统：启动热记忆注入、可解释冷召回、租约锁保护的事务写入、只读治理与轨迹复盘。纯 Python + Markdown 文件，无数据库、无向量服务、无外部服务依赖。
 
 **重要边界：本仓库只包含「机制」，不包含任何个人数据。** 记忆内容（画像、规则、事件、项目笔记）始终留在使用者自己的 Obsidian Vault 里，通过环境变量指向。
 
@@ -23,9 +23,14 @@ Agent 会话之间默认是失忆的。本系统用 **六层机制** 把「记�
 | 中文召回 | 中文 bigram BM25 + exact/标题/路径匹配 + 元数据重排，全程可解释 trace |
 | 字节预算 | 热包 14KB / 冷包 4.2KB 硬预算，UTF-8 安全截断 |
 | 治理只读 | L0-L3 边界，自动收集证据、永不自动删改 |
-| 零依赖 | 标准库 + Markdown 文件，Windows/macOS/Linux 可跑 |
+| 零依赖 | Python 标准库 + Markdown 文件，Windows/macOS/Linux 可跑（仅 backfill.py 历史回放需可选的 zstandard） |
 
 ## 系统架构（六层闭环）
+
+![DSH 记忆系统流程图](docs/memory-system-flowchart.png)
+
+<details>
+<summary>展开查看可编辑的 Mermaid 源码图</summary>
 
 ```mermaid
 flowchart TD
@@ -63,6 +68,8 @@ flowchart TD
 ```
 
 图例:实线 = 脚本机械执行;虚线 = 按需读取 / 人工核验;菱形 = 用户授权判断。反馈闭环:轨迹复盘产出的规则与事件,回灌到下一次会话的热记忆。
+
+</details>
 
 ## 六层职责详解（每一层做什么）
 
@@ -192,7 +199,7 @@ python vault-guard\recall.py --query "继续上次的XXX" --cwd "C:\path\to\proj
 
 ### 5. 接入 DSH hooks（可选）
 
-参考 `hooks.example.json`，把 `${DSH_HOME}` 替换为你的实际路径，写入 DSH 的 hooks 配置（如 `~/.dsh/hooks-dsh.json`）：
+脚本现在都用 `__file__` 包内相对定位（不依赖安装位置），hooks 命令只需指向 `hook-first-prompt.py` 的**实际所在路径**。参考 `hooks.example.json`，把路径替换为插件包内脚本位置，写入 DSH 的 hooks 配置（如 `~/.dsh/hooks-dsh.json`）：
 
 ```json
 {
@@ -201,13 +208,15 @@ python vault-guard\recall.py --query "继续上次的XXX" --cwd "C:\path\to\proj
       {
         "matcher": "",
         "hooks": [
-          { "type": "command", "command": "python \"${DSH_HOME}/vault-guard/hook-first-prompt.py\"" }
+          { "type": "command", "command": "python \"<插件包路径>/vault-guard/hook-first-prompt.py\"" }
         ]
       }
     ]
   }
 }
 ```
+
+> `DSH_HOME` 环境变量仍用于定位 DSH 运行时存储（storages/sessions 等），脚本自身互相调用则用包内相对路径——插件装到哪里都能跑，无需把 vault-guard 复制到 `$DSH_HOME`。
 
 每个新会话首个提示会自动注入热记忆包；命中召回信号（历史引用 + 具体主题）时追加冷包。
 

@@ -5,7 +5,7 @@
 ## [Unreleased]
 
 ### Added
-- DSH 插件形态(`dsh-vault-memory`):5 个 Agent 工具(memory_bootstrap / memory_recall / memory_gate / memory_govern / memory_write)
+- DSH 插件形态(`dsh-vault-memory`):6 个 Agent 工具(memory_bootstrap / memory_recall / memory_gate / memory_govern / memory_trajectory_review / memory_write)
 - `templates/` 脱敏记忆库骨架:10 分钟搭建自己的记忆系统
 - 英文 README(README.en.md)
 - CONTRIBUTING.md / SECURITY.md / CHANGELOG.md

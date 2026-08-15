@@ -19,6 +19,7 @@ except Exception:
 
 
 HOME = Path.home()
+HERE = Path(__file__).resolve().parent
 VAULT = Path(os.environ.get("MEMORY_VAULT") or (HOME / "Documents" / "Obsidian Vault"))
 DSH_HOME = Path(os.environ.get("DSH_HOME") or (HOME / ".dsh"))
 MEMORY = VAULT / "memory"
@@ -56,7 +57,7 @@ def read_text(path: Path) -> str:
 
 
 def run_gate() -> str:
-    check = DSH_HOME / "vault-guard" / "check.py"
+    check = HERE / "check.py"
     try:
         result = subprocess.run(
             [sys.executable, str(check)],

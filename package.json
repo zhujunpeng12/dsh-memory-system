@@ -17,6 +17,7 @@
     "plugins/evidence-ledger/",
     "!plugins/evidence-ledger/__pycache__",
     "templates/",
+    "docs/",
     "README.md",
     "README.en.md",
     "LICENSE"

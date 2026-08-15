@@ -45,7 +45,7 @@ def main() -> None:
     except Exception:
         payload = {}
     cwd = extract_cwd(payload) or str(Path.cwd())
-    bootstrap = Path(os.environ.get("DSH_HOME") or (Path.home() / ".dsh")) / "vault-guard" / "bootstrap.py"
+    bootstrap = Path(__file__).resolve().parent / "bootstrap.py"
     try:
         result = subprocess.run(
             [sys.executable, str(bootstrap), "--cwd", cwd, "--max-bytes", "14000"],

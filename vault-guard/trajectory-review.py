@@ -26,7 +26,7 @@ try:
 except Exception:
     pass
 
-DSH_HOME = Path(os.environ.get("DSH_HOME", Path.home() / ".dsh"))
+DSH_HOME = Path(os.environ.get("DSH_HOME") or (Path.home() / ".dsh"))
 SESSIONS = DSH_HOME / "sessions"
 LEDGER = DSH_HOME / "storages" / "tool-telemetry.json"
 

@@ -16,6 +16,7 @@ class FirstPromptHookTests(unittest.TestCase):
     def run_hook(self, dsh_home: Path, payload: dict) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
         env["DSH_HOME"] = str(dsh_home)
+        env["VAULT_GUARD_DIR"] = str(dsh_home / "vault-guard")
         env["PYTHONDONTWRITEBYTECODE"] = "1"
         return subprocess.run(
             [sys.executable, "-B", str(SCRIPT)],

@@ -16,7 +16,10 @@ import sys
 import time
 from pathlib import Path
 
-import zstandard
+try:
+    import zstandard
+except ImportError:
+    zstandard = None  # 无 zstandard 时仅无法回放会话日志；播种空账本仍可用
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -24,7 +27,7 @@ try:
 except Exception:
     pass
 
-DSH_HOME = Path(os.environ.get("DSH_HOME", Path.home() / ".dsh"))
+DSH_HOME = Path(os.environ.get("DSH_HOME") or (Path.home() / ".dsh"))
 SESSIONS = DSH_HOME / "sessions"
 STORE = DSH_HOME / "storages" / "tool-telemetry.json"
 TOOLMAP = Path(__file__).parent / "toolmap.json"
@@ -177,6 +180,9 @@ def print_report(store):
 
 
 def main():
+    if zstandard is None:
+        print("backfill 需要 zstandard 回放会话日志（pip install zstandard）", file=sys.stderr)
+        return 1
     args = sys.argv[1:]
     mode = "init"
     do_report = "--report" in args
@@ -187,6 +193,7 @@ def main():
         return
     store = {"schemaVersion": 1, "updated": 0, "plugins": {}, "tools": {}, "meta": {}}
     build(store)
+    STORE.parent.mkdir(parents=True, exist_ok=True)
     tmp = STORE.with_name(STORE.name + ".tmp-bf")
     tmp.write_text(json.dumps(store, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(tmp, STORE)

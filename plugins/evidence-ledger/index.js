@@ -128,7 +128,7 @@ export function apply(ctx) {
   // 启动时把静态映射合并进账本（映射快照随账本一起被消费）。
   store.plugins = { ...store.plugins, ...loadToolmap() }
   const pending = new Map() // `${sessionId}\u0000${callId}` -> tool name
-  // 活 Session 对象不暴露 cwd（实测 .cwd/.meta.cwd 均 null）——
+  // 活 Session 对象不暴露 cwd（验证 .cwd/.meta.cwd 均 null）——
   // 每个会话日志的首个 `session` 事件顶层带 cwd，这里按会话缓存（与 backfill 口径一致）。
   const sessionCwd = new Map() // sessionId -> cwd
   let timer = null
@@ -195,13 +195,14 @@ export function apply(ctx) {
 
   // 收尾门禁（不靠记性）：会话结束时机械跑普通 --closing，只检查已有 raw 缺口，
   // 不要求纯聊天/未授权会话制造 raw；有缺口时写提醒供下一会话开场浮出。
-  // 注意：harness 无 SessionEnd 事件，dsh-hooks 桥接的 Stop 映射到每轮 turn-stopping，
-  // 所以「会话结束强制检查」只能挂在这个原生 session/disposed 事件上。
+  // check.py 的路径通过 MEMORY_GUARD_CHECK 指定；未设置时回退到 ${DSH_HOME}/vault-guard/check.py。
   ctx.on('session/disposed', () => {
     try {
+      const checkPy = process.env.MEMORY_GUARD_CHECK
+        ?? join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'vault-guard', 'check.py')
       const child = spawn(
         'python',
-        [join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'vault-guard', 'check.py'), '--closing', '--remind'],
+        [checkPy, '--closing', '--remind'],
         { detached: true, stdio: 'ignore', windowsHide: true },
       )
       child.unref()

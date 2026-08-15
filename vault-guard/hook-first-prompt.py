@@ -30,9 +30,11 @@ try:
 except Exception:
     pass
 
-DSH_HOME = Path(os.environ.get("DSH_HOME", Path.home() / ".dsh"))
-BOOTSTRAP = DSH_HOME / "vault-guard" / "bootstrap.py"
-RECALL = DSH_HOME / "vault-guard" / "recall.py"
+DSH_HOME = Path(os.environ.get("DSH_HOME") or (Path.home() / ".dsh"))
+HERE = Path(__file__).resolve().parent
+GUARD_DIR = Path(os.environ.get("VAULT_GUARD_DIR") or HERE)
+BOOTSTRAP = GUARD_DIR / "bootstrap.py"
+RECALL = GUARD_DIR / "recall.py"
 EVENT_NAME = "UserPromptSubmit"
 SUCCESS_MARKER = "[vault-bootstrap] DSH 热记忆包"
 SESSION_MARKERS = DSH_HOME / "storages" / "vault-bootstrap-sessions"

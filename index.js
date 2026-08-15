@@ -1,9 +1,10 @@
 // dsh-vault-memory — local-first persistent memory infrastructure for DSH
 //
-// Host plugin. Registers five agent tools that drive the Python scripts in
+// Host plugin. Registers six agent tools that drive the Python scripts in
 // ./vault-guard: bootstrap (hot packet), recall (cold recall), gate (mechanical
-// checks), govern (read-only governance candidates) and write (authorized
-// transactional writes, dry-run by default).
+// checks), govern (read-only governance candidates), trajectory review
+// (evidence-driven candidates) and write (authorized transactional writes,
+// dry-run by default).
 //
 // All memory content lives in the user's own Obsidian Vault (MEMORY_VAULT),
 // never inside this plugin. Zero external npm dependencies; only Node built-ins
@@ -13,7 +14,8 @@
 // not hot-reloaded).
 
 import { spawn } from 'node:child_process'
-import { homedir } from 'node:os'
+import { writeFileSync, rmSync, mkdtempSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -81,6 +83,18 @@ function runScript(script, args = [], { timeoutMs = RUN_TIMEOUT_MS } = {}) {
   })
 }
 
+// Write inline text to a temp file and return its path + a cleanup disposer.
+// vault-write.py takes content as file paths (--body-file / --source-file),
+// so the plugin bridges agent-friendly inline content to the script's
+// file-driven CLI. The temp dir lives outside the vault and is removed after
+// the subprocess returns.
+function withTempFile(content, suffix = '.md') {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-vault-memory-'))
+  const file = join(dir, `content-${Date.now()}-${Math.random().toString(36).slice(2)}${suffix}`)
+  writeFileSync(file, content, 'utf8')
+  return { file, dispose: () => { try { rmSync(dir, { recursive: true, force: true }) } catch { /* best effort */ } } }
+}
+
 function present(title, kind, rawInput) {
   return { card: 'generic', title, kind, ...(rawInput === undefined ? {} : { rawInput }) }
 }
@@ -89,7 +103,7 @@ function present(title, kind, rawInput) {
 function textResult(run) {
   if (run.timedOut) return { ok: false, error: 'timeout' }
   const text = (run.stdout || '').trim()
-  if (!run.ok) return { ok: false, code: run.code, stderr: (run.stderr || '').trim() }
+  if (!run.ok) return { ok: false, code: run.code, stdout: text, stderr: (run.stderr || '').trim() }
   return { ok: true, text }
 }
 
@@ -97,7 +111,7 @@ function textResult(run) {
 function jsonResult(run, fallbackKey = 'text') {
   if (run.timedOut) return { ok: false, error: 'timeout' }
   const text = (run.stdout || '').trim()
-  if (!run.ok) return { ok: false, code: run.code, stderr: (run.stderr || '').trim() }
+  if (!run.ok) return { ok: false, code: run.code, stdout: text, stderr: (run.stderr || '').trim() }
   try {
     return { ok: true, value: JSON.parse(text) }
   } catch {
@@ -180,7 +194,7 @@ function registerAgentTools(agent) {
       'Read-only governance scan of the memory vault: duplicate/conflicting/stale/oversized candidates, rule lifecycle, transaction anomalies. Collects evidence and suggestions; never writes.',
     parameters: {
       json: { type: 'boolean', description: 'Emit machine-readable JSON.' },
-      maxItems: { type: 'integer', description: 'Maximum findings. Defaults to 100.' },
+      maxItems: { type: 'integer', description: 'Maximum findings. Defaults to 30.' },
     },
     output: JSON_OUTPUT,
     timeoutMs: 120_000,
@@ -226,13 +240,19 @@ function registerAgentTools(agent) {
   register(defineTool({
     name: 'memory_write',
     description:
-      'Authorized transactional write to the memory vault. Dry-run by default; only applies with apply=true after explicit user consent. Raw appends are append-only; corrections require --supersedes. Never edits historical raw entries in place.',
+      'Authorized transactional write to the memory vault. Dry-run by default; only applies with apply=true after explicit user consent. Raw appends are append-only; corrections require kind=correction|tombstone plus supersedes. Never edits historical raw entries in place.',
     parameters: {
       op: { type: 'string', enum: ['raw', 'replace', 'recover'], description: 'Operation: raw append, transactional replace of a non-raw file, or transaction recovery.' },
-      target: { type: 'string', description: 'For replace: path (relative to vault) of the file to update.' },
-      content: { type: 'string', description: 'For raw/replace: the content to append or the replacement text.' },
-      entryId: { type: 'string', description: 'For raw: the entry id this raw belongs to (used for the receipt).' },
-      supersedes: { type: 'string', description: 'For corrections: the exact entry id being superseded. Required for corrections; raw is append-only.' },
+      // raw subcommand:
+      title: { type: 'string', description: 'For raw: the raw entry title (required).' },
+      body: { type: 'string', description: 'For raw: the factual body text (facts only, no evaluation).' },
+      source: { type: 'string', description: 'For raw: where the evidence came from (session id, file path, url).' },
+      kind: { type: 'string', enum: ['fact', 'correction', 'tombstone'], description: 'For raw: entry kind. Defaults to fact. Corrections must set supersedes.' },
+      date: { type: 'string', description: 'For raw: YYYY-MM-DD for the raw file. Defaults to today.' },
+      supersedes: { type: 'string', description: 'For raw corrections: the exact entry id being superseded (required for correction/tombstone).' },
+      // replace subcommand:
+      target: { type: 'string', description: 'For replace: absolute or vault-relative path of the non-raw file to update.' },
+      newText: { type: 'string', description: 'For replace: the full replacement text (written to a temp file, then applied transactionally).' },
       expectedSha256: { type: 'string', description: 'For replace: the SHA-256 the current file must have (protects against concurrent edits).' },
       apply: { type: 'boolean', description: 'Actually apply the write. Without this, the tool only previews (dry-run).' },
     },
@@ -241,13 +261,32 @@ function registerAgentTools(agent) {
     async execute(args, exec) {
       if (!guard(exec, agent)) return json({ ok: false, code: 'cancelled' })
       const argv = [args.op]
-      if (args.target) argv.push('--target', args.target)
-      if (args.content) argv.push('--content', args.content)
-      if (args.entryId) argv.push('--entry-id', args.entryId)
-      if (args.supersedes) argv.push('--supersedes', args.supersedes)
-      if (args.expectedSha256) argv.push('--expected-sha256', args.expectedSha256)
-      if (args.apply) argv.push('--apply')
-      return json(textResult(await runScript('vault-write.py', argv)))
+      const disposers = []
+      try {
+        if (args.op === 'raw') {
+          if (!args.title || !args.body || !args.source) {
+            return json({ ok: false, error: 'raw requires title, body and source' })
+          }
+          const tmp = withTempFile(args.body)
+          disposers.push(tmp.dispose)
+          argv.push('--title', args.title, '--body-file', tmp.file, '--source', args.source)
+          if (args.kind) argv.push('--kind', args.kind)
+          if (args.date) argv.push('--date', args.date)
+          if (args.supersedes) argv.push('--supersedes', args.supersedes)
+        } else if (args.op === 'replace') {
+          if (!args.target || args.newText === undefined) {
+            return json({ ok: false, error: 'replace requires target and newText' })
+          }
+          const tmp = withTempFile(args.newText)
+          disposers.push(tmp.dispose)
+          argv.push('--target', args.target, '--source-file', tmp.file)
+          if (args.expectedSha256) argv.push('--expected-sha256', args.expectedSha256)
+        }
+        if (args.apply) argv.push('--apply')
+        return json(textResult(await runScript('vault-write.py', argv)))
+      } finally {
+        for (const dispose of disposers) dispose()
+      }
     },
     presentCall: (args) => present('Memory write', 'other', `${args.op}${args.apply ? ' (apply)' : ' (dry-run)'}`),
   }))

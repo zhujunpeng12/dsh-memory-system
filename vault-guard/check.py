@@ -37,7 +37,7 @@ LOCK = MEM / ".vault.lock"
 TX_ROOT = MEM / ".vault-transactions"
 PROJ = VAULT / "projects"
 DSH_HOME = Path(os.environ.get("DSH_HOME") or (Path.home() / ".dsh"))
-GUARD = DSH_HOME / "vault-guard"
+GUARD = Path(__file__).resolve().parent
 REMINDER = DSH_HOME / "storages" / "vault-gate-reminder.md"
 
 
@@ -83,8 +83,8 @@ def main(argv=None):
         issues.append(f"rules.md 超线：{lines} 行 / {size // 1024}KB（线 250 行/32KB）")
     else:
         oks.append(f"rules.md {lines} 行 / {size // 1024}KB 在线内")
-    for p in PROJ.glob("*.md"):
-        if "toolmap" in p.name:
+    for p in PROJ.rglob("*.md"):
+        if "toolmap" in p.name.casefold():
             continue
         lines, size = size_lines(p)
         if lines > 300 or size > 30720:

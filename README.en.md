@@ -27,6 +27,11 @@ Agent sessions are amnesic by default. This system turns "memory" into an engine
 
 ## System architecture (six-layer closed loop)
 
+![DSH memory system flowchart](docs/memory-system-flowchart.png)
+
+<details>
+<summary>Expand for editable Mermaid source diagram</summary>
+
 ```mermaid
 flowchart TD
     Start([New session / task]) --> Hook[SessionStart Hook<br/>parse JSON + cwd · UTF-8 safe]
@@ -63,6 +68,8 @@ flowchart TD
 ```
 
 Legend: solid = scripted execution; dashed = on-demand read / human review; diamond = user authorization decision. The feedback loop distills rules and events back into the next session's hot memory.
+
+</details>
 
 ## Install as a DSH plugin (recommended)
 
@@ -103,7 +110,7 @@ Restart the Harness. The agent gains 6 tools:
 
 ### ② Working path — rules-driven execution (methodology, no script)
 
-**What**: how the agent works, not a script: priority & permission boundaries (system/user > project AGENTS.md > global rules > cold docs), skill routing (named → quickref → graph fallback), minimal edits, root-cause investigation, verified delivery (syntax/config/real-run/UI evidence).
+**What**: how the agent works, not a script: priority & permission boundaries (system/user > project AGENTS.md > global rules > cold docs), skill routing (named → index table → graph fallback), minimal edits, root-cause investigation, verified delivery (syntax/config/real-run/UI evidence).
 
 **Why no script**: this layer is behavioral policy carried by `AGENTS.md`. The repo ships `templates/` with example rules as a starting point.
 
