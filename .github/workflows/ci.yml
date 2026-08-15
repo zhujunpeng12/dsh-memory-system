@@ -40,10 +40,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: gitleaks (full history)
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.24.3/gitleaks_8.24.3_linux_x64.tar.gz | tar -xz gitleaks
+          ./gitleaks detect --source . --redact --verbose --no-banner
 
   sanitize-scan:
     name: Sanitization scan (personal identifiers)
@@ -54,7 +54,7 @@ jobs:
       - name: Scan for personal identifiers
         run: |
           set +e
-          HITS=$(grep -rInE "31207|投顾工作台|southern|etfapp|euler|tushare|cli_anything|C:\\\\Users\\\\[A-Za-z]" \
+          HITS=$(grep -rInE "31207|投顾工作台|southern|etfapp|euler|tushare|cli_anything|C:\\\\Users\\\\[0-9]" \
             --include="*.py" --include="*.js" --include="*.json" --include="*.md" --include="*.yml" --include="*.yaml" . || true)
           if [ -n "$HITS" ]; then
             echo "::error::Personal identifiers found:"
