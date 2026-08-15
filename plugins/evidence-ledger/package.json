@@ -1,0 +1,17 @@
+{
+  "name": "evidence-ledger",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Tool-call ledger foundation for trajectory review: accumulates per-tool call counts and error classes across all sessions/workspaces into DSH_HOME/storages/tool-telemetry.json, consumed by trajectory-review.py as the evidence layer.",
+  "main": "./index.js",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  }
+}

@@ -14,8 +14,11 @@
     "cordis.patch.yml",
     "vault-guard/*.py",
     "vault-guard/README.md",
+    "plugins/evidence-ledger/",
+    "!plugins/evidence-ledger/__pycache__",
     "templates/",
     "README.md",
+    "README.en.md",
     "LICENSE"
   ],
   "dsh": {

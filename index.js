@@ -195,6 +195,35 @@ function registerAgentTools(agent) {
   }))
 
   register(defineTool({
+    name: 'memory_trajectory_review',
+    description:
+      'Read-only trajectory review: scan session traces (user corrections as the hard signal) plus the tool-call ledger from the evidence-ledger plugin, and produce candidate review items (scenario → error → root cause → precondition). Never writes the vault and never auto-judges.',
+    parameters: {
+      days: { type: 'integer', description: 'Lookback window in days. Defaults to 14.' },
+      maxSessions: { type: 'integer', description: 'Maximum sessions to scan. Defaults to 20.' },
+      maxItems: { type: 'integer', description: 'Maximum candidate items. Defaults to 20.' },
+      minToolErrors: { type: 'integer', description: 'Minimum repeated tool errors to surface. Defaults to 3.' },
+      cwd: { type: 'string', description: 'Only review the current workspace (default).' },
+      allWorkspaces: { type: 'boolean', description: 'Review all workspaces instead of the current one.' },
+      json: { type: 'boolean', description: 'Emit machine-readable JSON.' },
+    },
+    output: JSON_OUTPUT,
+    timeoutMs: 120_000,
+    async execute(args, exec) {
+      if (!guard(exec, agent)) return json({ ok: false, code: 'cancelled' })
+      const argv = ['--cwd', args.cwd ?? exec.ctx?.cwd ?? process.cwd()]
+      if (args.days) argv.push('--days', String(args.days))
+      if (args.maxSessions) argv.push('--max-sessions', String(args.maxSessions))
+      if (args.maxItems) argv.push('--max-items', String(args.maxItems))
+      if (args.minToolErrors) argv.push('--min-tool-errors', String(args.minToolErrors))
+      if (args.allWorkspaces) argv.push('--all-workspaces')
+      if (args.json) argv.push('--json')
+      return json(jsonResult(await runScript('trajectory-review.py', argv)))
+    },
+    presentCall: () => present('Scan trajectory review candidates', 'read'),
+  }))
+
+  register(defineTool({
     name: 'memory_write',
     description:
       'Authorized transactional write to the memory vault. Dry-run by default; only applies with apply=true after explicit user consent. Raw appends are append-only; corrections require --supersedes. Never edits historical raw entries in place.',

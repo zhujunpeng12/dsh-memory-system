@@ -77,7 +77,7 @@ npm pack            # 生成 tarball
 dsh plugin add ./dsh-vault-memory-0.1.0.tgz
 ```
 
-安装后重启 Harness，Agent 获得 5 个记忆工具：
+安装后重启 Harness，Agent 获得 6 个记忆工具：
 
 | 工具 | 作用 | 写操作 |
 |---|---|---|
@@ -85,9 +85,12 @@ dsh plugin add ./dsh-vault-memory-0.1.0.tgz
 | `memory_recall` | 冷召回（exact + 中文 BM25） | 只读 |
 | `memory_gate` | 机械门禁检查 | 只读 |
 | `memory_govern` | 治理候选扫描 | 只读 |
+| `memory_trajectory_review` | 轨迹复盘候选（用户纠正 = 硬信号） | 只读 |
 | `memory_write` | 授权事务写入（默认 dry-run） | 需确认 |
 
 `memory_write` 默认只预览，`apply=true` 且经用户确认后才落盘；`tools/pre-execute` 钩子会强制弹确认。所有工具通过 `MEMORY_VAULT` / `DSH_HOME` 环境变量定位你的记忆库。
+
+**轨迹复盘证据层（可选配套）**：`memory_trajectory_review` 依赖工具调用账本（`${DSH_HOME}/storages/tool-telemetry.json`）。安装配套插件 `plugins/evidence-ledger/`（工具账本，零 inject）后，每个会话的工具调用与错误会自动累计，复盘才有数据可扫。不装则复盘只扫 session 日志中的用户纠正信号。
 
 > 手动 hooks 注入（可选）：参考 `hooks.example.json` 把 `hook-first-prompt.py` 挂到 `UserPromptSubmit`，每个新会话首个提示自动注入热包。
 

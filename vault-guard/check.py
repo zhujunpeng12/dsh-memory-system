@@ -56,7 +56,7 @@ def main(argv=None):
     remind = "--remind" in args
     issues, oks = [], []
 
-    # 开场时浮出上次会话结束门禁留下的提醒（dsh-telemetry session/disposed 监听器写入）
+    # 开场时浮出上次会话结束门禁留下的提醒（evidence-ledger session/disposed 监听器写入）
     if not closing and REMINDER.exists():
         try:
             lines = REMINDER.read_text(encoding="utf-8").strip().splitlines()

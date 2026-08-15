@@ -74,7 +74,7 @@ dsh plugin add dsh-vault-memory        # once published
 npm pack && dsh plugin add ./dsh-vault-memory-0.1.0.tgz
 ```
 
-Restart the Harness. The agent gains 5 tools:
+Restart the Harness. The agent gains 6 tools:
 
 | Tool | Purpose | Writes |
 |---|---|---|
@@ -82,9 +82,12 @@ Restart the Harness. The agent gains 5 tools:
 | `memory_recall` | cold recall (exact + Chinese BM25) | read-only |
 | `memory_gate` | mechanical gate checks | read-only |
 | `memory_govern` | governance candidate scan | read-only |
+| `memory_trajectory_review` | trajectory review candidates (user corrections = hard signal) | read-only |
 | `memory_write` | authorized transactional write (dry-run default) | confirmed |
 
 `memory_write` only previews by default; it applies only with `apply=true` after explicit user confirmation (enforced via the `tools/pre-execute` hook). All tools locate your vault via `MEMORY_VAULT` / `DSH_HOME`.
+
+**Trajectory review evidence layer (optional companion)**: `memory_trajectory_review` reads the tool-call ledger (`${DSH_HOME}/storages/tool-telemetry.json`). Install the companion plugin `plugins/evidence-ledger/` (zero inject) to accumulate per-session tool calls and errors automatically. Without it, the review still scans session logs for user-correction signals.
 
 > Optional manual hooks: see `hooks.example.json` to attach `hook-first-prompt.py` to `UserPromptSubmit` for automatic hot-packet injection on the first prompt of every session.
 
