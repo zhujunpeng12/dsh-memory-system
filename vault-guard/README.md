@@ -54,7 +54,7 @@ python "$HOME\.dsh\vault-guard\rule-cite.py" 12b --apply
 
 ## 单一真相源
 
-- 记忆治理、毕业、仲裁、体量、过期与并发写入：`~/.dsh/docs/MEMORY_SYSTEM.md`
-- 预设、Skill、搜索、编码、review 与长任务：`~/.dsh/docs/AGENT_OPERATIONS.md`
-- 每次会话必须遵守的最小规则：`~/.dsh/AGENTS.md`
-- 优化前完整快照：`~/.dsh/archive/memory-optimization-20260814-231700/`
+- 记忆治理、毕业、仲裁、体量、过期与并发写入：记忆制度文档（`MEMORY_SYSTEM.md`，仓库外，由使用者在自己的 DSH 文档目录维护）
+- 预设、Skill、搜索、编码、review 与长任务：操作手册（`AGENT_OPERATIONS.md`，同上）
+- 每次会话必须遵守的最小规则：`AGENTS.md`（全局与项目）
+- 六层机制的公开说明：本仓库根 `README.md`

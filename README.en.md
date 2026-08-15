@@ -91,6 +91,56 @@ Restart the Harness. The agent gains 6 tools:
 
 > Optional manual hooks: see `hooks.example.json` to attach `hook-first-prompt.py` to `UserPromptSubmit` for automatic hot-packet injection on the first prompt of every session.
 
+## Six layers in detail (what each layer does)
+
+### ① Hot-memory bootstrap — one bounded context per session
+
+**What**: at session start, compress "what the agent most needs to know right now" into one ≤14KB packet and inject it once. No full-vault reads to get started.
+
+**Contents**: mechanical gate status (gaps/lock/sync), instruction-budget audit, user profile, active core rules (star + citation filtered), current project summary (cwd-ancestor match), recent event headings (14-day lookback, ≤180B each).
+
+**How**: `memory_bootstrap` tool, or `python vault-guard/bootstrap.py --cwd <dir> --max-bytes 14000`. Automatic via hooks.
+
+### ② Working path — rules-driven execution (methodology, no script)
+
+**What**: how the agent works, not a script: priority & permission boundaries (system/user > project AGENTS.md > global rules > cold docs), skill routing (named → quickref → graph fallback), minimal edits, root-cause investigation, verified delivery (syntax/config/real-run/UI evidence).
+
+**Why no script**: this layer is behavioral policy carried by `AGENTS.md`. The repo ships `templates/` with example rules as a starting point.
+
+### ③ Cold layer on demand — open details only when needed
+
+**What**: when a task needs evidence or details, cold recall opens full sources (complete rules, historical events/raw, project notes, monthly index, session logs).
+
+**Trigger**: two gates — a recall signal (history/last time/correction) **and** a concrete searchable topic, both required. Plain acknowledgements or meta-only follow-ups do not open cold memory.
+
+**How**: `memory_recall` tool, or `python vault-guard/recall.py --query "<q>" --cwd <dir> --force`. Exact + Chinese bigram BM25 + metadata rerank, ≤4.2KB packet with sources and trace.
+
+### ④ Authorized writes — write only when persistent value + user consent
+
+**What**: only "substantive output" (code/doc changes, persistent decisions, user preferences, data conventions, acceptance criteria, standing agreements) with explicit user consent goes through the transactional writer: acquire lease lock → append raw (facts only) → distill into events/projects/rules → release lock.
+
+**Safety**: 30s lease + 5s heartbeat single-writer lock; before-image + SHA-256 precondition + manifest + receipt multi-file transactions; raw append-only (corrections require supersedes); dry-run by default; `tools/pre-execute` confirmation enforced.
+
+**How**: `memory_write` tool (`op=raw/replace/recover`, applies only with `apply=true`).
+
+### ⑤ Slow maintenance — mechanical health checks + human governance
+
+**What**: periodically (or when the vault feels unhealthy): mechanical checks (raw gaps, size limits, rules-core sync, lock state) and human governance (rule graduation, conflict arbitration, expiry archiving, deletion confirmation).
+
+**Boundary**: `govern.py` collects evidence and suggestions only (duplicates/conflicts/staleness/size/lifecycle candidates), **never auto-deletes**. Promotion/archive/deletion always requires a human.
+
+**How**: `memory_govern` tool, or `python vault-guard/govern.py --json --max-items 100`. Pair with `check.py` closing gates (`--closing` / `--closing --expect-write`).
+
+### ⑥ Trajectory review — evidence-driven quality feedback loop
+
+**What**: at wrap-up, scan the session trace for three kinds of items: errors (user corrections = hard signal; AI self-review is self-serving), repeated tool errors (only when frequent), and reusable lessons. Output candidates in the four-field template: scenario → error → root cause → precondition.
+
+**Evidence**: user-correction signals from session logs + the tool-call ledger from the `evidence-ledger` plugin (which tools fail most). The ledger is a clue, never an automatic verdict.
+
+**Loop**: after human review, ordinary exploration failures are not distilled; patterns repeating ≥3 times graduate into rules-core; approved distillations go raw → events keeping conclusion + evidence pointer — rules and events feed back into the next session's hot memory.
+
+**How**: `memory_trajectory_review` tool, or `python vault-guard/trajectory-review.py --cwd <dir>`. Install `plugins/evidence-ledger/` for ledger data.
+
 ## Quick start (standalone)
 
 ### 1. Create a memory vault

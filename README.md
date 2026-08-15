@@ -64,6 +64,56 @@ flowchart TD
 
 图例:实线 = 脚本机械执行;虚线 = 按需读取 / 人工核验;菱形 = 用户授权判断。反馈闭环:轨迹复盘产出的规则与事件,回灌到下一次会话的热记忆。
 
+## 六层职责详解（每一层做什么）
+
+### ① 启动热记忆 — 每个会话一次的有界上下文
+
+**做什么**：新会话开始时，把「此刻最该知道的记忆」压缩成一个 ≤14KB 热包一次注入，让 Agent 不读全库也能带着上下文开工。
+
+**包含**：机械门禁状态（缺口/锁/同步）、指令预算审计、用户画像、活跃核心规则（按 ⭐ 与引用计数筛选）、当前项目摘要（按 cwd 祖先匹配）、最近事件主标题（14 天回溯、单条 ≤180B）。
+
+**怎么用**：`memory_bootstrap` 工具，或 `python vault-guard/bootstrap.py --cwd <项目目录> --max-bytes 14000`。接入 hooks 后每次新会话自动执行。
+
+### ② 工作路径 — 按规则执行任务（方法论层，无脚本）
+
+**做什么**：这是「Agent 怎么干活」的约定，不是脚本——热包注入后，Agent 按优先级与权限边界执行：系统/用户指令 > 项目 AGENTS.md > 全局规则 > 冷文档；技能路由（点名 → 速查表 → 图谱兜底）；最小修改、根因调查；交付前验证（语法/配置/真实运行/界面证据）。
+
+**为什么没有脚本**：这一层是行为规范，由 `AGENTS.md` 承载。开源版提供 `templates/` 里的示例规则作为起点，使用者按自己的团队文化改写。
+
+### ③ 冷层按需读取 — 需要细节才打开
+
+**做什么**：热包只有摘要，当任务需要证据或细节时，冷召回按需打开完整来源（完整规则、历史 events/raw、项目主笔记、月度索引、session 日志）。
+
+**触发**：双门槛——同时满足「历史/上次/纠正等召回信号」+「可检索的具体主题」才触发；纯确认语、复测元指令不打开。
+
+**怎么用**：`memory_recall` 工具，或 `python vault-guard/recall.py --query "<问题>" --cwd <目录> --force`。exact + 中文 bigram BM25 + 元数据重排，输出 ≤4.2KB 冷包并附来源与 trace。
+
+### ④ 授权写入 — 有持久价值且用户同意才写
+
+**做什么**：只有「实质产出」（代码/文档变更、持久决策、用户偏好、数据口径、验收标准、下次仍需遵守的约定）且用户同意归档时，才走事务写入：拿租约锁 → 写 raw（只记事实不评价）→ 提炼归位（events/项目/rules/toolmap）→ 释放锁。
+
+**安全机制**：30s 租约 + 5s 心跳单写者锁、before-image + SHA-256 前置 + manifest + receipt 多文件事务、raw 机械只追加（纠错必须 supersedes）、默认 dry-run、`tools/pre-execute` 强制确认。
+
+**怎么用**：`memory_write` 工具（`op=raw/replace/recover`，`apply=true` 才落盘）。
+
+### ⑤ 慢维护 — 机械体检 + 人工治理
+
+**做什么**：定期（或怀疑记忆库不健康时）做两件事——机械体检：raw 缺口、体量超线、rules-core 同步、写锁状态；人工治理：规则毕业、冲突仲裁、过期归位、删除确认。
+
+**边界**：`govern.py` 只收集证据与建议（重复/冲突/过期/体量/生命周期候选），**永不自动删改**；晋升/归档/删除永远需要人确认。
+
+**怎么用**：`memory_govern` 工具，或 `python vault-guard/govern.py --json --max-items 100`。配合 `check.py` 的收尾门禁（`--closing` / `--closing --expect-write`）使用。
+
+### ⑥ 轨迹复盘 — 证据驱动的质量反馈闭环
+
+**做什么**：收尾时回溯会话轨迹，找三类点：错误（用户纠正 = 硬信号；AI 自评有自我辩护倾向）、error（仅频繁时写）、可借鉴。产出按「场景 → 错误 → 根因 → 先决动作」四字段模板的复盘候选。
+
+**证据来源**：session 日志中的用户纠正信号 + `evidence-ledger` 插件的工具调用账本（谁的工具最常出错）。账本只作线索，不自动判错。
+
+**闭环**：人工核验后，普通探索失败不沉淀；重复 ≥3 次的模式毕业进 rules-core；获准的沉淀走 raw → events，保留结论与证据指针——规则与事件回灌到下一次会话的热记忆，形成进化闭环。
+
+**怎么用**：`memory_trajectory_review` 工具，或 `python vault-guard/trajectory-review.py --cwd <目录>`。配套安装 `plugins/evidence-ledger/` 才有工具账本数据。
+
 ## 作为 DSH 插件安装（推荐）
 
 插件形态把记忆能力直接注册为 Agent 工具，并随 DSH 装配自动生效：
@@ -164,7 +214,7 @@ python vault-guard\recall.py --query "继续上次的XXX" --cwd "C:\path\to\proj
 ## 目录结构
 
 ```
-├── index.js                    # DSH host 插件：5 个记忆工具 + 写操作护栏
+├── index.js                    # DSH host 插件：6 个记忆工具 + 写操作护栏
 ├── package.json                # npm 包声明（dsh-vault-memory）
 ├── dsh.plugin.json             # DSH 插件 manifest
 ├── cordis.patch.yml            # DSH bundle 装配补丁
@@ -184,6 +234,8 @@ python vault-guard\recall.py --query "继续上次的XXX" --cwd "C:\path\to\proj
 │   ├── govern.py               # 只读治理扫描（重复/冲突/过期/体量/生命周期）
 │   ├── trajectory-review.py    # 轨迹复盘候选（用户纠正 = 硬信号）
 │   └── test_*.py               # 回归测试（unittest，无外部依赖）
+├── plugins/
+│   └── evidence-ledger/        # 配套插件：工具调用账本（轨迹复盘证据层）
 ├── templates/                  # 脱敏记忆库骨架（10 分钟搭出自己的记忆系统）
 ├── hooks.example.json          # DSH hooks 装配示例
 ├── .env.example                # 环境变量示例
