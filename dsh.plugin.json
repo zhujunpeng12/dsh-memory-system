@@ -1,9 +1,9 @@
 {
-  "name": "dsh-vault-memory",
+  "name": "dsh-memory-system",
   "description": "Local-first persistent memory infrastructure for DeepSeek Harness: hot-memory bootstrap, Chinese-BM25 cold recall, transactional writes with lease locks, read-only governance, and trajectory review.",
   "version": "0.1.0",
   "entry": {
-    "name": "dsh-vault-memory",
+    "name": "dsh-memory-system",
     "inject": ["tools"]
   }
 }

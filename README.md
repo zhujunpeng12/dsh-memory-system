@@ -127,11 +127,11 @@ flowchart TD
 
 ```bash
 # 从 dsh-plugin topic 仓库安装（审核后发布时可用）
-dsh plugin add dsh-vault-memory
+dsh plugin add dsh-memory-system
 
 # 或本地开发安装
 npm pack            # 生成 tarball
-dsh plugin add ./dsh-vault-memory-0.1.0.tgz
+dsh plugin add ./dsh-memory-system-0.1.0.tgz
 ```
 
 安装后重启 Harness，Agent 获得 6 个记忆工具：
@@ -224,7 +224,7 @@ python vault-guard\recall.py --query "继续上次的XXX" --cwd "C:\path\to\proj
 
 ```
 ├── index.js                    # DSH host 插件：6 个记忆工具 + 写操作护栏
-├── package.json                # npm 包声明（dsh-vault-memory）
+├── package.json                # npm 包声明（dsh-memory-system）
 ├── dsh.plugin.json             # DSH 插件 manifest
 ├── cordis.patch.yml            # DSH bundle 装配补丁
 ├── vault-guard/

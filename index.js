@@ -1,4 +1,4 @@
-// dsh-vault-memory — local-first persistent memory infrastructure for DSH
+// dsh-memory-system — local-first persistent memory infrastructure for DSH
 //
 // Host plugin. Registers six agent tools that drive the Python scripts in
 // ./vault-guard: bootstrap (hot packet), recall (cold recall), gate (mechanical
@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { buildToolInvocation, TMPFILE_MARKER } from './bridge.js'
 
-export const name = 'dsh-vault-memory'
+export const name = 'dsh-memory-system'
 export const inject = ['tools']
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -90,7 +90,7 @@ function runScript(script, args = [], { timeoutMs = RUN_TIMEOUT_MS } = {}) {
 // file-driven CLI. The temp dir lives outside the vault and is removed after
 // the subprocess returns.
 function withTempFile(content, suffix = '.md') {
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-vault-memory-'))
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-memory-system-'))
   const file = join(dir, `content-${Date.now()}-${Math.random().toString(36).slice(2)}${suffix}`)
   writeFileSync(file, content, 'utf8')
   return { file, dispose: () => { try { rmSync(dir, { recursive: true, force: true }) } catch { /* best effort */ } } }
@@ -285,7 +285,7 @@ export function apply(ctx) {
   const agentTools = new Map()
   const mount = (agent) => {
     if (agentTools.has(agent) || !ctx.agents.roots().includes(agent)) return
-    const dispose = agent.ctx.effect(() => registerAgentTools(agent), 'dsh-vault-memory: agent tools')
+    const dispose = agent.ctx.effect(() => registerAgentTools(agent), 'dsh-memory-system: agent tools')
     agentTools.set(agent, dispose)
   }
   for (const agent of ctx.agents.roots()) mount(agent)
@@ -302,5 +302,5 @@ export function apply(ctx) {
   ctx.effect(() => () => {
     for (const dispose of [...agentTools.values()].reverse()) dispose()
     agentTools.clear()
-  }, 'dsh-vault-memory: cleanup')
+  }, 'dsh-memory-system: cleanup')
 }

@@ -1,6 +1,6 @@
-# Contributing to dsh-vault-memory
+# Contributing to dsh-memory-system
 
-感谢你考虑为 dsh-vault-memory 贡献。这个项目把「记忆系统的工程可靠性」当作第一公民,请先读 README 理解六层机制与核心边界,再动手。
+感谢你考虑为 dsh-memory-system 贡献。这个项目把「记忆系统的工程可靠性」当作第一公民,请先读 README 理解六层机制与核心边界,再动手。
 
 ## 核心边界(不可破坏)
 

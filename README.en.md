@@ -1,4 +1,4 @@
-# dsh-vault-memory — Persistent memory infrastructure for DeepSeek Harness
+# dsh-memory-system — Persistent memory infrastructure for DeepSeek Harness
 
 > Local-first persistent memory for DeepSeek Harness (DSH) agents: bounded hot-memory bootstrap, explainable cold recall, lease-locked transactional writes, read-only governance, and trajectory review. Pure Python + Markdown. No database, no vector service, no external dependencies.
 
@@ -76,9 +76,9 @@ Legend: solid = scripted execution; dashed = on-demand read / human review; diam
 The plugin form registers memory capabilities directly as agent tools:
 
 ```bash
-dsh plugin add dsh-vault-memory        # once published
+dsh plugin add dsh-memory-system        # once published
 # or local:
-npm pack && dsh plugin add ./dsh-vault-memory-0.1.0.tgz
+npm pack && dsh plugin add ./dsh-memory-system-0.1.0.tgz
 ```
 
 Restart the Harness. The agent gains 6 tools:
@@ -183,7 +183,7 @@ python vault-guard/recall.py --query "continue the previous X" --cwd /path/to/pr
 
 ```
 ├── index.js                    # DSH host plugin: 5 memory tools + write guard
-├── package.json                # npm package (dsh-vault-memory)
+├── package.json                # npm package (dsh-memory-system)
 ├── dsh.plugin.json             # DSH plugin manifest
 ├── cordis.patch.yml            # DSH bundle patch
 ├── vault-guard/                # Python core (bootstrap/recall/gate/govern/write/...)
