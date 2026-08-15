@@ -8,6 +8,20 @@
     ".": "./index.js",
     "./package.json": "./package.json"
   },
+  "author": {
+    "name": "zhujunpeng12",
+    "email": "312076183@qq.com",
+    "url": "https://github.com/zhujunpeng12"
+  },
+  "homepage": "https://github.com/zhujunpeng12/dsh-memory-system#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhujunpeng12/dsh-memory-system.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zhujunpeng12/dsh-memory-system/issues",
+    "email": "312076183@qq.com"
+  },
   "files": [
     "index.js",
     "bridge.js",
