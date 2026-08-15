@@ -10,6 +10,7 @@
   },
   "files": [
     "index.js",
+    "bridge.js",
     "dsh.plugin.json",
     "cordis.patch.yml",
     "vault-guard/*.py",
@@ -36,7 +37,7 @@
     }
   },
   "scripts": {
-    "check": "node --check index.js && python -m py_compile vault-guard/*.py && python -m unittest discover -s vault-guard -p \"test_*.py\""
+    "check": "node --check index.js && node --check bridge.js && node --test test_plugin_bridge.test.mjs && python -c \"import glob,py_compile; [py_compile.compile(f, doraise=True) for f in glob.glob('vault-guard/*.py')+glob.glob('plugins/evidence-ledger/*.py')]\" && python -m unittest discover -s vault-guard -p \"test_*.py\""
   },
   "keywords": [
     "deepseek-harness",

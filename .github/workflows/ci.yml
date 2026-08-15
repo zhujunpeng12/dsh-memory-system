@@ -21,13 +21,16 @@ jobs:
           node-version: '20'
 
       - name: Python syntax check
-        run: python -m py_compile vault-guard/*.py
+        run: python -c "import glob,py_compile; [py_compile.compile(f, doraise=True) for f in glob.glob('vault-guard/*.py')+glob.glob('plugins/evidence-ledger/*.py')]"
 
       - name: Python unit tests
         run: python -m unittest discover -s vault-guard -p "test_*.py" -v
 
       - name: Node syntax check
-        run: node --check index.js
+        run: node --check index.js && node --check bridge.js
+
+      - name: Node plugin-bridge tests
+        run: node --test test_plugin_bridge.test.mjs
 
       - name: npm pack (whitelist sanity)
         run: npm pack --dry-run 2>&1 | tee /tmp/pack.log && ! grep -E "__pycache__|\.pyc" /tmp/pack.log

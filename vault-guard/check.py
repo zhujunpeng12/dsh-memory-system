@@ -51,6 +51,15 @@ def size_lines(p):
 
 def main(argv=None):
     args = list(sys.argv[1:] if argv is None else argv)
+    if "--help" in args or "-h" in args:
+        print(
+            "usage: python check.py [--closing] [--expect-write] [--remind]\n\n"
+            "  --closing       收尾模式：只检查已有 raw 是否漏提炼\n"
+            "  --expect-write  授权写入收尾：额外要求今日 raw 存在\n"
+            "  --remind        把缺口写入提醒文件供下一会话开场浮出\n"
+            "  --help          显示本帮助"
+        )
+        return 0
     closing = "--closing" in args or "--expect-write" in args
     expect_write = "--expect-write" in args
     remind = "--remind" in args

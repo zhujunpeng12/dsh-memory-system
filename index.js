@@ -19,6 +19,7 @@ import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { buildToolInvocation, TMPFILE_MARKER } from './bridge.js'
 
 export const name = 'dsh-vault-memory'
 export const inject = ['tools']
@@ -95,6 +96,24 @@ function withTempFile(content, suffix = '.md') {
   return { file, dispose: () => { try { rmSync(dir, { recursive: true, force: true }) } catch { /* best effort */ } } }
 }
 
+// Materialize an invocation returned by buildToolInvocation: write each temp
+// file and replace TMPFILE_MARKER in argv with the real path. Returns the
+// concrete argv plus disposers (closed by the caller).
+function resolveInvocation(inv) {
+  const argv = [...inv.argv]
+  const disposers = []
+  if (inv.tempFiles) {
+    for (const tf of inv.tempFiles) {
+      const tmp = withTempFile(tf.content)
+      disposers.push(tmp.dispose)
+      for (let i = 0; i < argv.length; i++) {
+        if (argv[i] === TMPFILE_MARKER) argv[i] = tmp.file
+      }
+    }
+  }
+  return { argv, disposers }
+}
+
 function present(title, kind, rawInput) {
   return { card: 'generic', title, kind, ...(rawInput === undefined ? {} : { rawInput }) }
 }
@@ -139,9 +158,8 @@ function registerAgentTools(agent) {
     timeoutMs: 120_000,
     async execute(args, exec) {
       if (!guard(exec, agent)) return json({ ok: false, code: 'cancelled' })
-      const argv = ['--cwd', args.cwd ?? exec.ctx?.cwd ?? process.cwd()]
-      if (args.maxBytes) argv.push('--max-bytes', String(args.maxBytes))
-      return json(textResult(await runScript('bootstrap.py', argv)))
+      const inv = buildToolInvocation('memory_bootstrap', args, exec.ctx?.cwd)
+      return json(textResult(await runScript(inv.script, inv.argv)))
     },
     presentCall: (args) => present('Generate hot-memory packet', 'read', args.cwd),
   }))
@@ -160,10 +178,8 @@ function registerAgentTools(agent) {
     timeoutMs: 120_000,
     async execute(args, exec) {
       if (!guard(exec, agent)) return json({ ok: false, code: 'cancelled' })
-      const argv = ['--query', args.query, '--cwd', args.cwd ?? exec.ctx?.cwd ?? process.cwd()]
-      if (args.force) argv.push('--force')
-      if (args.top) argv.push('--top', String(args.top))
-      return json(textResult(await runScript('recall.py', argv)))
+      const inv = buildToolInvocation('memory_recall', args, exec.ctx?.cwd)
+      return json(textResult(await runScript(inv.script, inv.argv)))
     },
     presentCall: (args) => present('Cold recall', 'read', args.query),
   }))
@@ -180,10 +196,8 @@ function registerAgentTools(agent) {
     timeoutMs: 60_000,
     async execute(args, exec) {
       if (!guard(exec, agent)) return json({ ok: false, code: 'cancelled' })
-      const argv = []
-      if (args.closing) argv.push('--closing')
-      if (args.expectWrite) argv.push('--expect-write')
-      return json(textResult(await runScript('check.py', argv)))
+      const inv = buildToolInvocation('memory_gate', args, exec.ctx?.cwd)
+      return json(textResult(await runScript(inv.script, inv.argv)))
     },
     presentCall: () => present('Run memory gate', 'read'),
   }))
@@ -200,10 +214,8 @@ function registerAgentTools(agent) {
     timeoutMs: 120_000,
     async execute(args, exec) {
       if (!guard(exec, agent)) return json({ ok: false, code: 'cancelled' })
-      const argv = []
-      if (args.json) argv.push('--json')
-      if (args.maxItems) argv.push('--max-items', String(args.maxItems))
-      return json(jsonResult(await runScript('govern.py', argv)))
+      const inv = buildToolInvocation('memory_govern', args, exec.ctx?.cwd)
+      return json(jsonResult(await runScript(inv.script, inv.argv)))
     },
     presentCall: () => present('Scan governance candidates', 'read'),
   }))
@@ -225,14 +237,8 @@ function registerAgentTools(agent) {
     timeoutMs: 120_000,
     async execute(args, exec) {
       if (!guard(exec, agent)) return json({ ok: false, code: 'cancelled' })
-      const argv = ['--cwd', args.cwd ?? exec.ctx?.cwd ?? process.cwd()]
-      if (args.days) argv.push('--days', String(args.days))
-      if (args.maxSessions) argv.push('--max-sessions', String(args.maxSessions))
-      if (args.maxItems) argv.push('--max-items', String(args.maxItems))
-      if (args.minToolErrors) argv.push('--min-tool-errors', String(args.minToolErrors))
-      if (args.allWorkspaces) argv.push('--all-workspaces')
-      if (args.json) argv.push('--json')
-      return json(jsonResult(await runScript('trajectory-review.py', argv)))
+      const inv = buildToolInvocation('memory_trajectory_review', args, exec.ctx?.cwd)
+      return json(jsonResult(await runScript(inv.script, inv.argv)))
     },
     presentCall: () => present('Scan trajectory review candidates', 'read'),
   }))
@@ -260,30 +266,11 @@ function registerAgentTools(agent) {
     timeoutMs: 120_000,
     async execute(args, exec) {
       if (!guard(exec, agent)) return json({ ok: false, code: 'cancelled' })
-      const argv = [args.op]
-      const disposers = []
+      const inv = buildToolInvocation('memory_write', args, exec.ctx?.cwd)
+      if (inv.error) return json({ ok: false, error: inv.error })
+      const { argv, disposers } = resolveInvocation(inv)
       try {
-        if (args.op === 'raw') {
-          if (!args.title || !args.body || !args.source) {
-            return json({ ok: false, error: 'raw requires title, body and source' })
-          }
-          const tmp = withTempFile(args.body)
-          disposers.push(tmp.dispose)
-          argv.push('--title', args.title, '--body-file', tmp.file, '--source', args.source)
-          if (args.kind) argv.push('--kind', args.kind)
-          if (args.date) argv.push('--date', args.date)
-          if (args.supersedes) argv.push('--supersedes', args.supersedes)
-        } else if (args.op === 'replace') {
-          if (!args.target || args.newText === undefined) {
-            return json({ ok: false, error: 'replace requires target and newText' })
-          }
-          const tmp = withTempFile(args.newText)
-          disposers.push(tmp.dispose)
-          argv.push('--target', args.target, '--source-file', tmp.file)
-          if (args.expectedSha256) argv.push('--expected-sha256', args.expectedSha256)
-        }
-        if (args.apply) argv.push('--apply')
-        return json(textResult(await runScript('vault-write.py', argv)))
+        return json(textResult(await runScript(inv.script, argv)))
       } finally {
         for (const dispose of disposers) dispose()
       }
