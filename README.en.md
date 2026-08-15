@@ -76,9 +76,9 @@ Legend: solid = scripted execution; dashed = on-demand read / human review; diam
 The plugin form registers memory capabilities directly as agent tools:
 
 ```bash
-dsh plugin add dsh-memory-system        # once published
+dsh plugin add @zhujunpeng12/dsh-memory-system        # once published
 # or local:
-npm pack && dsh plugin add ./dsh-memory-system-0.1.0.tgz
+npm pack && dsh plugin add ./zhujunpeng12-dsh-memory-system-0.1.0.tgz
 ```
 
 Restart the Harness. The agent gains 6 tools:

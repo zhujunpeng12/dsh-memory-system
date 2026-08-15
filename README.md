@@ -127,11 +127,11 @@ flowchart TD
 
 ```bash
 # 从 dsh-plugin topic 仓库安装（审核后发布时可用）
-dsh plugin add dsh-memory-system
+dsh plugin add @zhujunpeng12/dsh-memory-system
 
 # 或本地开发安装
 npm pack            # 生成 tarball
-dsh plugin add ./dsh-memory-system-0.1.0.tgz
+dsh plugin add ./zhujunpeng12-dsh-memory-system-0.1.0.tgz
 ```
 
 安装后重启 Harness，Agent 获得 6 个记忆工具：

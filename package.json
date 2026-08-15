@@ -1,5 +1,5 @@
 {
-  "name": "dsh-memory-system",
+  "name": "@zhujunpeng12/dsh-memory-system",
   "version": "0.1.0",
   "description": "Local-first persistent memory infrastructure for DeepSeek Harness: bounded hot-memory bootstrap, explainable cold recall (exact + Chinese BM25), lease-lock transactional writes, read-only governance, and trajectory review. Pure Python + Markdown, zero external dependencies.",
   "type": "module",
