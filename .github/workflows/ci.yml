@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    name: Tests (Python + Node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Python syntax check
+        run: python -m py_compile vault-guard/*.py
+
+      - name: Python unit tests
+        run: python -m unittest discover -s vault-guard -p "test_*.py" -v
+
+      - name: Node syntax check
+        run: node --check index.js
+
+      - name: npm pack (whitelist sanity)
+        run: npm pack --dry-run 2>&1 | tee /tmp/pack.log && ! grep -E "__pycache__|\.pyc" /tmp/pack.log
+
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sanitize-scan:
+    name: Sanitization scan (personal identifiers)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan for personal identifiers
+        run: |
+          set +e
+          HITS=$(grep -rInE "31207|投顾工作台|southern|etfapp|euler|tushare|cli_anything|C:\\\\Users\\\\[A-Za-z]" \
+            --include="*.py" --include="*.js" --include="*.json" --include="*.md" --include="*.yml" --include="*.yaml" . || true)
+          if [ -n "$HITS" ]; then
+            echo "::error::Personal identifiers found:"
+            echo "$HITS"
+            exit 1
+          fi
+          echo "Sanitization scan passed"
