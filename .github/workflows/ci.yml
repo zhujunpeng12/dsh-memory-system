@@ -57,9 +57,11 @@ jobs:
       - name: Scan for personal identifiers
         run: |
           set +e
+          # 312076183@qq.com 是作者主动公开的反馈邮箱（见 README 引用与致谢、package.json
+          # author/bugs），作为书面同意公开的信息放行；其余 31207 命中的真实路径/标识仍拦截。
           HITS=$(grep -rInE "31207|投顾工作台|southern|etfapp|euler|tushare|cli_anything|C:\\\\Users\\\\[0-9]" \
             --include="*.py" --include="*.js" --include="*.json" --include="*.md" --include="*.yml" --include="*.yaml" \
-            --exclude-dir=.git --exclude-dir=.github . || true)
+            --exclude-dir=.git --exclude-dir=.github . | grep -v "312076183@qq.com" || true)
           if [ -n "$HITS" ]; then
             echo "::error::Personal identifiers found:"
             echo "$HITS"
