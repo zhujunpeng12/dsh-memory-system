@@ -123,8 +123,8 @@ class ColdRecallTests(unittest.TestCase):
 
 class EmbeddedPathStrippingTests(ColdRecallTests):
     def test_windows_path_prefix_is_stripped_to_subject(self) -> None:
-        clean = strip_embedded_paths(r"C:\Users\someone\Desktop\交接说明.md")
-        self.assertEqual(clean.strip(), "交接说明")
+        clean = strip_embedded_paths(r"C:\Users\someone\Desktop\dsh记忆系统v3交接说明.md")
+        self.assertEqual(clean.strip(), "dsh记忆系统v3交接说明")
         tokens = ranking_tokens(clean)
         self.assertNotIn("users", tokens)
         self.assertNotIn("desktop", tokens)
@@ -151,7 +151,7 @@ class EmbeddedPathStrippingTests(ColdRecallTests):
                 encoding="utf-8",
             )
             hits, _ = recall(
-                r"C:\Users\someone\Desktop\锁修复复盘",
+                r"C:\Users\someone\Desktop\热记忆锁修复",
                 vault=vault,
                 cwd=Path(tmp),
                 top=6,
