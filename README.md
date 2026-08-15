@@ -25,6 +25,45 @@ Agent 会话之间默认是失忆的。本系统用 **六层机制** 把「记�
 | 治理只读 | L0-L3 边界，自动收集证据、永不自动删改 |
 | 零依赖 | 标准库 + Markdown 文件，Windows/macOS/Linux 可跑 |
 
+## 系统架构（六层闭环）
+
+```mermaid
+flowchart TD
+    Start([新会话 / 新任务]) --> Hook[SessionStart Hook<br/>解析 JSON 与 cwd · UTF-8 兼容]
+
+    Hook -->|实线:脚本机械执行| B1[① 启动热记忆<br/>bootstrap.py · 有界上下文 ≤14KB]
+    B1 --> B1a[机械门禁<br/>缺口 · 锁 · 同步]
+    B1 --> B1b[指令预算<br/>8KB/32KB/48KB 软预警]
+    B1 --> B1c[用户画像<br/>完整注入 · 不绑定项目]
+    B1 --> B1d[活跃规则<br/>核心标记 + 引用次数 · 按预算筛选]
+    B1 --> B1e[项目摘要<br/>cwd 祖先匹配 Vault]
+    B1 --> B1f[最近事件日<br/>14 天回溯 · 只取主标题 · 单条 ≤180B]
+    B1f -->|合并一次注入| B1out["[vault-bootstrap] 热包"]
+
+    B1out --> B2[② 工作路径<br/>AGENTS 内核 · Skill 路由 · 最小修改]
+    B2 --> B2out[验证后交付<br/>语法/配置/真实运行/界面证据]
+
+    B2 -.需要细节时按需读取.-> B3[③ 冷层按需读取<br/>完整 rules · 历史 events/raw · 项目笔记 · 月度索引 · session 日志]
+
+    B3 --> Q1{有持久价值且<br/>用户同意归档?}
+    Q1 -->|否| Q1no[普通收尾 · 不自动写 Vault<br/>session/disposed → check --closing]
+    Q1 -->|是| B4[④ 授权写入事务<br/>拿锁 vault-lock · 写 raw 只记事实<br/>提炼归位 events/项目/rules · 释放锁]
+    B4 --> B4out[授权门禁<br/>check --closing --expect-write]
+
+    B4out --> B5[⑤ 慢维护<br/>机械体检 raw 缺口/体量/core 同步<br/>人工治理 毕业/仲裁/过期/删除确认]
+
+    B2 -.会话轨迹.-> B6[⑥ 轨迹复盘反馈闭环<br/>trajectory-review.py 只读候选]
+    B6 --> B6a[证据层<br/>用户纠正=硬信号 · session 日志 · 工具账本只作线索]
+    B6a --> B6b{人工核验<br/>场景→错误→根因→先决动作}
+    B6b -->|重复 ≥3 次| B6c[规则回灌<br/>毕业进 rules-core]
+    B6b -->|普通探索失败| B6d[不沉淀]
+    B6b -->|授权沉淀| B6e[raw → events<br/>保留结论与证据指针]
+    B6c --> B1
+    B6e --> B1
+```
+
+图例:实线 = 脚本机械执行;虚线 = 按需读取 / 人工核验;菱形 = 用户授权判断。反馈闭环:轨迹复盘产出的规则与事件,回灌到下一次会话的热记忆。
+
 ## 作为 DSH 插件安装（推荐）
 
 插件形态把记忆能力直接注册为 Agent 工具，并随 DSH 装配自动生效：

@@ -25,6 +25,45 @@ Agent sessions are amnesic by default. This system turns "memory" into an engine
 | Read-only governance | L0-L3 boundaries; collects evidence, never auto-deletes |
 | Zero dependencies | Python stdlib + Markdown; Windows/macOS/Linux |
 
+## System architecture (six-layer closed loop)
+
+```mermaid
+flowchart TD
+    Start([New session / task]) --> Hook[SessionStart Hook<br/>parse JSON + cwd · UTF-8 safe]
+
+    Hook -->|solid: script execution| B1[① Hot-memory bootstrap<br/>bootstrap.py · bounded ≤14KB]
+    B1 --> B1a[Mechanical gate<br/>gaps · lock · sync]
+    B1 --> B1b[Instruction budget<br/>8KB/32KB/48KB soft warning]
+    B1 --> B1c[User profile<br/>full inject · not project-bound]
+    B1 --> B1d[Active rules<br/>star + citation count · budget-filtered]
+    B1 --> B1e[Project summary<br/>cwd ancestor matches vault]
+    B1 --> B1f[Recent event days<br/>14-day lookback · headings only · ≤180B each]
+    B1f -->|single merged inject| B1out["[vault-bootstrap] packet"]
+
+    B1out --> B2[② Working path<br/>AGENTS core · skill routing · minimal edits]
+    B2 --> B2out[Verified delivery<br/>syntax/config/real-run/UI evidence]
+
+    B2 -.on-demand read.-> B3[③ Cold layer on demand<br/>full rules · historical events/raw · project notes · monthly index · session logs]
+
+    B3 --> Q1{Persistent value and<br/>user approves archive?}
+    Q1 -->|no| Q1no[Plain closing · no auto write<br/>session/disposed → check --closing]
+    Q1 -->|yes| B4[④ Authorized write transaction<br/>acquire lock · append raw facts only<br/>distill to events/projects/rules · release]
+    B4 --> B4out[Authorization gate<br/>check --closing --expect-write]
+
+    B4out --> B5[⑤ Slow maintenance<br/>mechanical health: gaps/size/core sync<br/>human governance: promote/arbitrate/expire/delete]
+
+    B2 -.session trace.-> B6[⑥ Trajectory review loop<br/>trajectory-review.py read-only candidates]
+    B6 --> B6a[Evidence layer<br/>user correction = hard signal · tool ledger as clue only]
+    B6a --> B6b{Human review<br/>scenario → error → root cause → precondition}
+    B6b -->|repeats ≥3 times| B6c[Rule backfill<br/>graduate into rules-core]
+    B6b -->|ordinary exploration failure| B6d[No distillation]
+    B6b -->|approved distillation| B6e[raw → events<br/>keep conclusion + evidence pointer]
+    B6c --> B1
+    B6e --> B1
+```
+
+Legend: solid = scripted execution; dashed = on-demand read / human review; diamond = user authorization decision. The feedback loop distills rules and events back into the next session's hot memory.
+
 ## Install as a DSH plugin (recommended)
 
 The plugin form registers memory capabilities directly as agent tools:
