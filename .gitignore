@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# 记忆数据（永远不进仓库）
+.vault.lock
+.vault-transactions/
+*.raw.md
+memory/
+
+# DSH 运行时
+.dsh/
+storages/
+sessions/
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
