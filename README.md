@@ -268,7 +268,16 @@ python -m unittest discover -p "test_*.py" -v
 
 ## 许可证
 
-MIT — 详见 [LICENSE](LICENSE)。
+MIT — 详见 [LICENSE](LICENSE)。版权所有 © 2026 [zhujunpeng12](https://github.com/zhujunpeng12)。
+
+## 引用与致谢
+
+本项目由 [zhujunpeng12](https://github.com/zhujunpeng12) 创建并维护。如果它帮助到了你——在你的产品里使用了它、基于它做了二次开发、或在文章 / 分享中引用了这套「六层记忆闭环」的理念——欢迎：
+
+- 在你项目的 README、关于页或公开材料中署名致谢
+- 通过 issue / discussion 告知作者你的使用场景，作者很乐意看到它被用在真实环境里
+
+MIT 许可不强制这些，但你的致谢是对开源最实在的回馈。
 
 ## 免责声明
 

@@ -215,7 +215,16 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: see [SECURITY.md](SECUR
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). Copyright © 2026 [zhujunpeng12](https://github.com/zhujunpeng12).
+
+## Attribution
+
+This project is created and maintained by [zhujunpeng12](https://github.com/zhujunpeng12). If it helps you — whether you use it in a product, build on it, or reference the six-layer memory loop in an article or talk — you are warmly invited to:
+
+- Credit the project in your README, about page, or public material
+- Tell the author how you use it via issue / discussion — it is genuinely appreciated to see it in real environments
+
+MIT does not require any of this, but your acknowledgement is the most tangible return for open source.
 
 ## Disclaimer
 
