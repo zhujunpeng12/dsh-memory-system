@@ -144,9 +144,13 @@ Restart the Harness. The agent gains 6 tools:
 
 **What**: at wrap-up, scan the session trace for three kinds of items: errors (user corrections = hard signal; AI self-review is self-serving), repeated tool errors (only when frequent), and reusable lessons. Output candidates in the four-field template: scenario → error → root cause → precondition.
 
+**Four required parts (a review is incomplete without all four)**: ① ledger review (quantitative first — per-tool call counts / error rates / weighted cost from `tool-telemetry.json`, diffed against the previous snapshot); ② error review (qualitative — user corrections as hard signal / errors / reusable lessons, four-field template); ③ improvement plan + dispatch question; ④ session temp-file cleanup.
+
+**Dual-scope ledger snapshot**: snapshots must record both global and per-workspace scopes — the workspace scope must include its unknown share; an abnormally high unknown share signals broken attribution, in which case fall back to the global scope for comparisons.
+
 **Evidence**: user-correction signals from session logs + the tool-call ledger from the `evidence-ledger` plugin (which tools fail most). The ledger is a clue, never an automatic verdict.
 
-**Loop**: after human review, ordinary exploration failures are not distilled; patterns repeating ≥3 times graduate into rules-core; approved distillations go raw → events keeping conclusion + evidence pointer — rules and events feed back into the next session's hot memory.
+**Loop**: review produces candidates → propose a plan to lower tool error rates → dispatch the fix (single task → independent sub-agent; multiple improvements → a multi-agent team split by role, using the dependency triple-check / file ownership / accept-on-delivery discipline) → after the fixes land, distill the session trace into events; if the user says "next time", skip the fix and distill directly. After human review, ordinary exploration failures are not distilled; patterns repeating ≥3 times graduate into rules-core — rules and events feed back into the next session's hot memory.
 
 **How**: `memory_trajectory_review` tool, or `python vault-guard/trajectory-review.py --cwd <dir>`. Install `plugins/evidence-ledger/` for ledger data.
 
@@ -227,6 +231,8 @@ This project is created and maintained by [zhujunpeng12](https://github.com/zhuj
 - Tell the author how you use it via email <312076183@qq.com> — it is genuinely appreciated to see it in real environments
 
 MIT does not require any of this, but your acknowledgement is the most tangible return for open source.
+
+**Upstream acknowledgement**: the "trajectory review → multi-agent dispatch" methodology in this repository builds on [NanmiCoder/dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) (MIT) — a multi-agent team orchestration plugin for DeepSeek Harness. Enhancements practiced and distilled on top of it here: demand-brief gating (brief submission + panel confirmation + dispatch blocking), orchestration correction (editable dependencies / captain self-claim), captain protocol (progressive acceptance / dependency triple-check / file ownership / new-demand-as-task), and UI state machines (ripple phases / queued amber state). Thanks to the original author.
 
 ## Disclaimer
 

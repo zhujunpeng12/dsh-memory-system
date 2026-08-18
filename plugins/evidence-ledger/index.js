@@ -108,6 +108,21 @@ function extractResult(event) {
   return { text, isError }
 }
 
+// 活 Session 的稳定标识：优先直接 .id，缺失时用不可变 SessionHeader 的 id。
+// 两者同源（SessionHeader 由会话创建时填充），取其一即可保持 pending 键一致。
+function sidOf(session) {
+  return session?.id ?? session?.header?.id ?? '?'
+}
+
+// 活 Session 的 cwd：藏在 .header.cwd（不可变 SessionHeader）里——
+// 实测 .cwd / .meta.cwd 均为 null（早期误判「活 Session 不暴露 cwd」）。
+// 注意：session/event 流根本不携带会话头事件（头事件走 sessionPersistence.create(meta)，
+// 与 append() 的 post-commit 流是两条路径），所以事件里的 cwd 只能作补充，不能作唯一来源。
+function headerCwd(session) {
+  const cwd = session?.header?.cwd
+  return typeof cwd === 'string' && cwd !== '' ? cwd : undefined
+}
+
 function ensureTool(store, toolName, time) {
   let tool = store.tools[toolName]
   if (!tool) {
@@ -128,8 +143,8 @@ export function apply(ctx) {
   // 启动时把静态映射合并进账本（映射快照随账本一起被消费）。
   store.plugins = { ...store.plugins, ...loadToolmap() }
   const pending = new Map() // `${sessionId}\u0000${callId}` -> tool name
-  // 活 Session 对象不暴露 cwd（验证 .cwd/.meta.cwd 均 null）——
-  // 每个会话日志的首个 `session` 事件顶层带 cwd，这里按会话缓存（与 backfill 口径一致）。
+  // 会话缓存 cwd：session/event 流不携带会话头事件，因此以活 Session 的
+  // header.cwd 为主路径（见 headerCwd）；缓存只兜底事件流自身带 cwd 的场景。
   const sessionCwd = new Map() // sessionId -> cwd
   let timer = null
 
@@ -148,20 +163,23 @@ export function apply(ctx) {
     const type = event?.type
     const data = event?.data
     if (type === 'session') {
-      // 会话首个事件：记录 cwd 供工作区维度使用
-      if (session?.id && typeof event?.cwd === 'string') sessionCwd.set(session.id, event.cwd)
+      // 会话首个事件：记录 cwd 供工作区维度使用（事件流若携带）。
+      // 事件 cwd 缺失时回退 session.header.cwd——头事件通常不经过本流。
+      const sid = sidOf(session)
+      const cwd = typeof event?.cwd === 'string' ? event.cwd : headerCwd(session)
+      if (sid !== '?' && typeof cwd === 'string') sessionCwd.set(sid, cwd)
       if (sessionCwd.size > 5000) sessionCwd.clear() // 安全阀
       return
     }
     if (type === 'tool/call') {
-      const key = `${session?.id ?? '?'}\u0000${data?.callId ?? ''}`
+      const key = `${sidOf(session)}\u0000${data?.callId ?? ''}`
       if (typeof data?.name === 'string' && data.name !== '') pending.set(key, data.name)
       if (pending.size > 500) pending.clear() // 安全阀：无结果的孤儿调用不无限囤积
       return
     }
     if (type !== 'tool/result') return
     const cid = data?.message?.source?.callId
-    const key = `${session?.id ?? '?'}\u0000${cid ?? ''}`
+    const key = `${sidOf(session)}\u0000${cid ?? ''}`
     const toolName = pending.get(key)
     pending.delete(key)
     if (!toolName) return
@@ -178,7 +196,10 @@ export function apply(ctx) {
     tool.errors.sandbox += err.sandbox
     tool.errors.exception += err.exception
 
-    const ws = sessionCwd.get(session?.id) ?? 'unknown'
+    // 工作区归属：会话缓存 → 活 Session 的 header.cwd（主路径）→ unknown。
+    // header.cwd 与日志首条 session 事件的 cwd 同源，live/backfill 两端口径一致。
+    const sid = sidOf(session)
+    const ws = sessionCwd.get(sid) ?? headerCwd(session) ?? 'unknown'
     let wsEntry = tool.workspaces[ws]
     if (!wsEntry) wsEntry = tool.workspaces[ws] = { calls: 0, errors: 0 }
     wsEntry.calls += 1
@@ -196,6 +217,8 @@ export function apply(ctx) {
   // 收尾门禁（不靠记性）：会话结束时机械跑普通 --closing，只检查已有 raw 缺口，
   // 不要求纯聊天/未授权会话制造 raw；有缺口时写提醒供下一会话开场浮出。
   // check.py 的路径通过 MEMORY_GUARD_CHECK 指定；未设置时回退到 ${DSH_HOME}/vault-guard/check.py。
+  // 注意：harness 无 SessionEnd 事件，dsh-hooks 桥接的 Stop 映射到每轮 turn-stopping，
+  // 所以「会话结束强制检查」只能挂在这个原生 session/disposed 事件上。
   ctx.on('session/disposed', () => {
     try {
       const checkPy = process.env.MEMORY_GUARD_CHECK
@@ -205,6 +228,9 @@ export function apply(ctx) {
         [checkPy, '--closing', '--remind'],
         { detached: true, stdio: 'ignore', windowsHide: true },
       )
+      child.on('error', () => {
+        // python 缺失等异步失败：门禁是提醒机制，绝不能以 uncaught error 崩溃宿主
+      })
       child.unref()
     } catch {
       // 门禁失败静默：检查是提醒机制，不打断会话生命周期

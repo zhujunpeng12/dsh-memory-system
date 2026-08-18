@@ -74,7 +74,7 @@ def walk_logs():
 
 def read_events(f):
     dctx = zstandard.ZstdDecompressor()
-    with dctx.stream_reader(open(f, "rb")) as reader:
+    with open(f, "rb") as raw, dctx.stream_reader(raw) as reader:
         text = reader.read().decode("utf-8", errors="replace")
     for line in text.splitlines():
         line = line.strip()
@@ -144,7 +144,7 @@ def build(store):
                 w = tool["workspaces"].setdefault(ws, {"calls": 0, "errors": 0})
                 w["calls"] += 1
                 w["errors"] += err["total"]
-        marks[sid] = max(marks.get(sid, 0), last_seq)
+        marks[f"{wsname}\u0000{sid}"] = max(marks.get(f"{wsname}\u0000{sid}", 0), last_seq)
     store["meta"] = {**(store.get("meta") or {}), "replayMark": marks}
     store["updated"] = int(time.time() * 1000)
 
