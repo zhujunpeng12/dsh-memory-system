@@ -11,7 +11,8 @@
 | `check.py` | 检查 raw→events 缺口、体量、锁状态并按需同步核心规则 |
 | `sync-core.py` | `rules.md` → `rules-core.md`（⭐ 或 `⏱×N≥2`） |
 | `vault_lock.py` / `vault-lock.py` | 30 秒租约、5 秒心跳的单写者锁库与兼容 CLI |
-| `vault_tx.py` / `vault-write.py` | 可恢复事务、哈希前置条件、raw 只追加与写入回执；默认 dry-run |
+| `vault_tx.py` / `vault-write.py` | 可恢复事务、哈希前置条件、raw 只追加与写入回执、C0 控制字符（PS 转义）校验；默认 dry-run |
+| `vault-probe.py` | 修改前字节级预检：定位目标子串真实字节/char codes，输出不可见字符（BEL/TAB/CR…）清单；只读 |
 | `trajectory-review.py` | 只读扫描 session 强纠正信号与工具账本，输出复盘候选 |
 | `rule-cite.py` | 按精确规则编号预览/增加 `⏱×N`，写锁保护并同步核心层 |
 | `govern.py` | 只读扫描锁/事务、提炼、重复、冲突、过期、体量与规则生命周期候选 |
@@ -32,9 +33,38 @@ python "$HOME\.dsh\vault-guard\trajectory-review.py" --cwd "<当前目录>"
 python "$HOME\.dsh\vault-guard\trajectory-review.py" --all-workspaces
 python "$HOME\.dsh\vault-guard\rule-cite.py" 12b
 python "$HOME\.dsh\vault-guard\rule-cite.py" 12b --apply
+python "$HOME\.dsh\vault-guard\vault-probe.py" "<文件>" "<子串>"
+python "$HOME\.dsh\vault-guard\vault-probe.py" "<文件>" --needle-file "<UTF-8子串文件>"
 ```
 
 `vault-write.py raw/replace/recover` 和 `rule-cite.py` 都是默认预览，只有明确授权后才加 `--apply`。raw 必须走 `vault-write.py raw`；correction/tombstone 必须带 `--supersedes <entry_id>`，不得直接改历史 raw。共享非 raw 文件替换时传 `--expected-sha256`，防止覆盖别的会话新内容。
+
+### PowerShell 转义防护（反引号 → BEL 污染）
+
+2026-08-18 轨迹复盘确认的实际事故：用 PowerShell 内联字符串（`python -c "..."`）写 Vault 时，字符串里的反引号会被 PowerShell 解释成转义序列——`` `a `` 变成 BEL(0x07)+'a'，`ax.get_position()` 被写成 BEL+'x.get_position()'，直接污染 events 文件。全局规则 4 已禁止此路径，本目录在工具层再兜一层：
+
+- **标准流程**：写入 Vault 的正文一律不允许走 PowerShell 内联字符串路径。先把内容写入 UTF-8 临时文件，再 `vault-write.py raw --body-file <路径>`（或 `replace --source-file <路径>`）传路径；改既有非 raw 文件用 read/edit 工具。
+- **内置校验**：`vault-write.py` 对 raw（title/body）与 replace（source-file）读入的文本扫描 C0 控制字符（0x00-0x1F，除 `\n` `\r` `\t`）。`--apply` 时发现即拒绝写入（在进入事务前退出 1）；dry-run 时输出 ⚠️ 告警但不阻断，方便预览发现问题。
+- 校验只读文本，不改变事务、写锁或哈希前置条件逻辑。
+
+### 修改前字节级预检（显示层 ≠ 字节层）
+
+2026-08-18 复盘确认：edit 工具按 read/grep 显示层构造 `old_string` 连续失败（old_string not found），因为显示层与文件真实字节不一致——文件被污染（BEL）或含不可见字符（TAB/CR/零宽）时，肉眼看到的 ≠ 实际字节。t1 的防护管「写入侧」拦截，本小节管「修改前核对」，二者互补：
+
+- **何时用**：edit 报 old_string not found；显示层可疑（复制内容对不上）；目标片段含特殊符号/反引号/中文/疑似被污染。
+- **怎么用**（PowerShell，脚本只读不写盘）：
+  ```powershell
+  # ① 定位目标子串，看命中处前后真实 char codes（含不可见字符具名）
+  python "$HOME\.dsh\vault-guard\vault-probe.py" "C:\...\memory\events\2026-08-18.md" "ax.get_position()"
+
+  # ② 子串本身含反引号/BEL 等特殊字符时——内容放 UTF-8 文件，用 --needle-file 传（别走内联字符串）
+  python "$HOME\.dsh\vault-guard\vault-probe.py" "C:\...\memory\events\2026-08-18.md" --needle-file "$env:TEMP\needle.txt"
+
+  # ③ 不给子串：输出全文件不可见字符清单（BEL/TAB/CR/DEL/零宽等，含位置），排查污染
+  python "$HOME\.dsh\vault-guard\vault-probe.py" "C:\...\memory\events\2026-08-18.md"
+  ```
+- **输出解读**：命中行给出「字符偏移 / 字节偏移 / 行:列」，窗口逐字符显示 `repr + U+XXXX 名称`（`'\x07' BEL`、`'\t' TAB`、`'\r' CR`）；**子串未找到退出码 1**（edit 大概率也会失败）——此时先看输出的不可见字符清单，对照后重写 old_string，而不是盲改重试。
+- 只读工具，不碰事务/写锁/文件内容。
 
 普通 `--closing` 是后台 session 销毁时的无写入假设检查：只报告已经存在但未提炼的 raw。只有本次会话有实质产出、用户同意归档并完成写入事务时，才运行 `--closing --expect-write`，额外要求当日 raw 存在。
 
@@ -54,7 +84,7 @@ python "$HOME\.dsh\vault-guard\rule-cite.py" 12b --apply
 
 ## 单一真相源
 
-- 记忆治理、毕业、仲裁、体量、过期与并发写入：记忆制度文档（`MEMORY_SYSTEM.md`，仓库外，由使用者在自己的 DSH 文档目录维护）
-- 预设、Skill、搜索、编码、review 与长任务：操作手册（`AGENT_OPERATIONS.md`，同上）
-- 每次会话必须遵守的最小规则：`AGENTS.md`（全局与项目）
-- 六层机制的公开说明：本仓库根 `README.md`
+- 记忆治理、毕业、仲裁、体量、过期与并发写入：`~/.dsh/docs/MEMORY_SYSTEM.md`
+- 预设、Skill、搜索、编码、review 与长任务：`~/.dsh/docs/AGENT_OPERATIONS.md`
+- 每次会话必须遵守的最小规则：`~/.dsh/AGENTS.md`
+- 优化前完整快照：`~/.dsh/archive/memory-optimization-20260814-231700/`
