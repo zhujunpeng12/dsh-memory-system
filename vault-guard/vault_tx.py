@@ -72,13 +72,27 @@ def recover_incomplete(memory: Path, *, exclude: str | None = None) -> list[dict
             for op in raw_entries:
                 target = Path(str(op.get("target")))
                 marker = str(op.get("entry_id") or "")
+                before_size = int(op.get("before_size") or 0)
+                append_hash = str(op.get("append_sha256") or "")
+                after_size = op.get("after_size")
                 try:
-                    text = target.read_text(encoding="utf-8", errors="replace")
+                    data = target.read_bytes()
                 except OSError:
-                    text = ""
-                committed = committed and bool(marker and f'"id": "{marker}"' in text)
+                    data = b""
+                if after_size is not None and len(data) == int(after_size):
+                    # 正常提交路径：大小精确匹配
+                    ok = True
+                elif append_hash and len(data) >= before_size and len(data) > before_size:
+                    # 崩溃恢复路径：文件尾部（追加起点之后）必须是追加块的完整字节，
+                    # 用 append_sha256 验证——截断的半写入会在这里被识别为未完成
+                    ok = sha256_bytes(data[before_size:]) == append_hash
+                else:
+                    ok = bool(marker and f'"id": "{marker}"' in data.decode("utf-8", errors="replace"))
+                committed = committed and ok
             data["state"] = "committed_recovered" if committed else "rolled_back"
-            data["recovery_reason"] = "raw-entry-present" if committed else "raw-entry-absent"
+            data["recovery_reason"] = (
+                "raw-entry-verified" if committed else "raw-entry-absent-or-truncated"
+            )
         elif state in {"committing", "recovery_required"}:
             for op in reversed(operations):
                 if not isinstance(op, dict) or op.get("kind") != "replace":
@@ -249,6 +263,9 @@ class VaultTransaction:
             self.lock.assert_owned()
             self._set_state("committing")
             for temp, target in staged:
+                # 每个文件替换前都校验所有权：租约被夺的窗口从「整个多文件循环」
+                # 缩小到「单次 os.replace 的瞬间」，避免跨写者交错覆盖
+                self.lock.assert_owned()
                 os.replace(temp, target)
             self.lock.assert_owned()
             self._set_state("committed", committed_at=time.time())
@@ -265,6 +282,23 @@ class VaultTransaction:
         except Exception as exc:
             for temp, _ in staged:
                 temp.unlink(missing_ok=True)
+            if self.data.get("state") == "committed":
+                # 文件已全部提交，只有 receipt 落盘失败：必须保持 committed 状态，
+                # 绝不能翻成 rolled_back（否则 manifest 与文件内容矛盾）
+                self._set_state("committed", receipt_error=f"{type(exc).__name__}: {exc}")
+                try:
+                    atomic_json(self.tx_dir / "receipt.json", {
+                        "schema": "dsh-vault-transaction-receipt-v1",
+                        "transaction_id": self.transaction_id,
+                        "purpose": self.purpose,
+                        "state": "committed",
+                        "operations": operations,
+                        "receipt_error": f"{type(exc).__name__}: {exc}",
+                        "at": time.time(),
+                    })
+                except Exception:
+                    pass
+                raise
             rollback_error = None
             if self.data.get("state") == "committing":
                 try:

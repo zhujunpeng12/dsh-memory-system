@@ -32,12 +32,17 @@ CONTROL_CHAR_HINT = (
 
 
 def control_char_hits(text: str) -> list[tuple[str, int]]:
-    """C0 控制字符 (0x00-0x1F) 命中列表，排除无害的 \\n \\r \\t。"""
+    """C0 控制字符 (0x00-0x1F) 命中列表，排除无害的 \\n \\r \\t。
+
+    同时把孤立代理算命中：Windows 下 argv 经 gbk+surrogateescape 解码时，
+    BEL(0x07) 会变成 U+DC07——ord 已不在 C0 范围，仅查 <0x20 会漏判。"""
     hits: list[tuple[str, int]] = []
     for index, ch in enumerate(text):
         code = ord(ch)
         if code < 0x20 and code not in (0x09, 0x0A, 0x0D):
             hits.append((_CONTROL_NAMES.get(code, f"U+{code:04X}"), index))
+        elif 0xD800 <= code <= 0xDFFF:
+            hits.append((f"U+{code:04X}(孤立代理)", index))
     return hits
 
 
@@ -92,6 +97,9 @@ def main(argv=None) -> int:
             body = args.body_file.read_text(encoding="utf-8")
             guard_control_chars(args.title, apply=args.apply)
             guard_control_chars(body, apply=args.apply)
+            guard_control_chars(args.source, apply=args.apply)
+            guard_control_chars(args.supersedes or "", apply=args.apply)
+            guard_control_chars(args.date, apply=args.apply)
             target = MEMORY / "events" / f"{args.date}.raw.md"
             if not args.apply:
                 print(f"dry-run: append {args.kind} to {target}; title={args.title!r}; bytes={len(body.encode('utf-8'))}")

@@ -52,7 +52,8 @@ def clip_utf8(text: str, limit: int, suffix: str = "\n…[已按字节预算截�
 def read_text(path: Path) -> str:
     try:
         return path.read_text(encoding="utf-8").strip()
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
+        # 非 UTF-8/损坏文件不能崩掉整个热包——记为读取失败继续
         return f"[读取失败：{path}：{exc}]"
 
 

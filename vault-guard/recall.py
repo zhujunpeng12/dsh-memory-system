@@ -158,7 +158,8 @@ def _split_large(chunk: Chunk, max_bytes: int = 2400) -> list[Chunk]:
 def parse_chunks(path: Path, vault: Path) -> list[Chunk]:
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
+    except (OSError, UnicodeDecodeError):
+        # 非 UTF-8/损坏文件：跳过该文件而不是崩掉整个召回
         return []
     stype = source_type(path, vault)
     headings: dict[int, str] = {}
@@ -406,6 +407,10 @@ def main(argv=None) -> int:
     parser.add_argument("--decide-only", action="store_true")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    # Windows 控制台下 argv 可能带孤立代理（GBK 解码 UTF-8 payload 产物），
+    # 会在下游 clip_utf8 严格 UTF-8 编码处崩溃——入口做一次 replace 往返剥离。
+    args.query = args.query.encode("utf-8", "replace").decode("utf-8")
+    args.cwd = args.cwd.encode("utf-8", "replace").decode("utf-8")
     reasons = trigger_reasons(args.query)
     decision = should_cold_recall(args.query)
     if args.decide_only:

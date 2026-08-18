@@ -46,7 +46,9 @@ def size_lines(p):
         text = p.read_text(encoding="utf-8")
         return len(text.splitlines()), len(text.encode("utf-8"))
     except Exception:
-        return 0, 0
+        # 读取失败（非 UTF-8/损坏/权限）与「空文件」必须区分：
+        # 返回 None 让调用方报缺口，而不是假报 0 行/0KB「在线内」
+        return None, None
 
 
 def main(argv=None):
@@ -88,7 +90,9 @@ def main(argv=None):
 
     # ② 体量体检
     lines, size = size_lines(RULES)
-    if lines > 250 or size > 32768:
+    if lines is None:
+        issues.append("rules.md 读取失败（可能非 UTF-8/损坏），无法体量体检")
+    elif lines > 250 or size > 32768:
         issues.append(f"rules.md 超线：{lines} 行 / {size // 1024}KB（线 250 行/32KB）")
     else:
         oks.append(f"rules.md {lines} 行 / {size // 1024}KB 在线内")
@@ -96,19 +100,33 @@ def main(argv=None):
         if "toolmap" in p.name.casefold():
             continue
         lines, size = size_lines(p)
-        if lines > 300 or size > 30720:
+        if lines is None:
+            issues.append(f"项目笔记读取失败：{p.name}（可能非 UTF-8/损坏）")
+        elif lines > 300 or size > 30720:
             issues.append(f"项目笔记超线：{p.name} {lines} 行 / {size // 1024}KB（线 300 行/30KB）")
 
     # ③ rules-core 同步（机械自愈）
-    if not CORE.exists() or RULES.stat().st_mtime > CORE.stat().st_mtime + 1:
-        r = subprocess.run(
-            [sys.executable, str(GUARD / "sync-core.py")],
-            capture_output=True, text=True, encoding="utf-8",
-        )
-        if r.returncode == 0:
-            oks.append(f"rules-core.md 已自动同步：{r.stdout.strip()}")
+    sync_needed = False
+    try:
+        sync_needed = not CORE.exists() or RULES.stat().st_mtime > CORE.stat().st_mtime + 1
+    except OSError:
+        sync_needed = not CORE.exists()
+        if not RULES.exists():
+            issues.append("rules.md 不存在，无法同步 rules-core")
+    if sync_needed and RULES.exists():
+        try:
+            r = subprocess.run(
+                [sys.executable, str(GUARD / "sync-core.py")],
+                capture_output=True, text=True, encoding="utf-8",
+                timeout=60,
+            )
+        except subprocess.TimeoutExpired:
+            issues.append("rules-core.md 同步超时（锁竞争>60s？），跳过本轮")
         else:
-            issues.append(f"rules-core.md 同步失败：{r.stderr.strip()[:120]}")
+            if r.returncode == 0:
+                oks.append(f"rules-core.md 已自动同步：{r.stdout.strip()}")
+            else:
+                issues.append(f"rules-core.md 同步失败：{r.stderr.strip()[:120]}")
 
     # ④ 租约锁与未完成事务状态（区分健康活跃锁与陈旧/损坏锁，绝不自动强夺活跃锁）
     lock_status = describe_status(LOCK)

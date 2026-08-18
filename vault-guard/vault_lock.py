@@ -85,8 +85,6 @@ def _windows_process_state(pid: int) -> tuple[bool, str | None]:
             exit_code = wintypes.DWORD()
             if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
                 return True, None
-            if exit_code.value != 259:  # STILL_ACTIVE
-                return False, None
             creation = wintypes.FILETIME()
             exit_time = wintypes.FILETIME()
             kernel = wintypes.FILETIME()
@@ -99,6 +97,11 @@ def _windows_process_state(pid: int) -> tuple[bool, str | None]:
                 ctypes.byref(user),
             ):
                 return True, None
+            # 用 exit_time 而非 exit_code==259 判断存活：STILL_ACTIVE(259) 是哨兵值，
+            # 一个正常退出码恰好为 259 的进程会被误判为永远活着 → 陈旧锁永不回收。
+            # exit_time 非零 = 进程确实已终止（无论退出码是什么）。
+            if exit_time.dwHighDateTime != 0 or exit_time.dwLowDateTime != 0:
+                return False, None
             fingerprint = str((creation.dwHighDateTime << 32) | creation.dwLowDateTime)
             return True, fingerprint
         finally:
@@ -273,6 +276,9 @@ class VaultLock:
             before = self.path.read_bytes()
         except FileNotFoundError:
             return "lock-disappeared"
+        except OSError:
+            # Windows WinError 32：锁文件正被另一个进程写入/读取——无法判定，等待重试
+            return None
         meta = read_lock(self.path)
         reason = reclaim_reason(self.path, meta, force=self.force)
         if not reason:
@@ -283,6 +289,9 @@ class VaultLock:
             self.path.unlink()
         except FileNotFoundError:
             return "lock-disappeared"
+        except OSError:
+            # unlink 与并发读/写竞争（WinError 32）：回收未完成，让上层重试
+            return None
         _recovery_receipt(self.path, meta, reason)
         return reason
 
@@ -296,7 +305,9 @@ class VaultLock:
                     self._thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
                     self._thread.start()
                 return self
-            except FileExistsError:
+            except (FileExistsError, PermissionError):
+                # Windows 上锁文件被并发写入/读取的瞬间窗口，O_EXCL 打开可能抛
+                # WinError 32 (PermissionError) 而非 FileExistsError——两者都按「锁忙」处理
                 if self._try_reclaim():
                     continue
                 if time.monotonic() >= deadline:
@@ -339,6 +350,10 @@ class VaultLock:
             try:
                 self.path.unlink()
             except FileNotFoundError:
+                pass
+            except OSError:
+                # Windows：unlink 与并发读者竞争（WinError 32）——文件仍存在，
+                # 但 owner 已释放；下次 acquire 会按陈旧锁安全回收
                 pass
             self.acquired = False
             return True
