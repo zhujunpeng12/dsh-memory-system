@@ -44,7 +44,7 @@ python "$HOME\.dsh\vault-guard\vault-probe.py" "<文件>" --needle-file "<UTF-8�
 2026-08-18 轨迹复盘确认的实际事故：用 PowerShell 内联字符串（`python -c "..."`）写 Vault 时，字符串里的反引号会被 PowerShell 解释成转义序列——`` `a `` 变成 BEL(0x07)+'a'，`ax.get_position()` 被写成 BEL+'x.get_position()'，直接污染 events 文件。全局规则 4 已禁止此路径，本目录在工具层再兜一层：
 
 - **标准流程**：写入 Vault 的正文一律不允许走 PowerShell 内联字符串路径。先把内容写入 UTF-8 临时文件，再 `vault-write.py raw --body-file <路径>`（或 `replace --source-file <路径>`）传路径；改既有非 raw 文件用 read/edit 工具。
-- **内置校验**：`vault-write.py` 对 raw（title/body）与 replace（source-file）读入的文本扫描 C0 控制字符（0x00-0x1F，除 `\n` `\r` `\t`）。`--apply` 时发现即拒绝写入（在进入事务前退出 1）；dry-run 时输出 ⚠️ 告警但不阻断，方便预览发现问题。
+- **内置校验**：`vault-write.py` 对 raw（title/body/source/date/supersedes）与 replace（source-file）读入的文本扫描 C0 控制字符（0x00-0x1F，除 `\n` `\r` `\t`）及孤立代理（Windows gbk+surrogateescape 解码产物）。`--apply` 时发现即拒绝写入（在进入事务前退出 1）；dry-run 时输出 ⚠️ 告警但不阻断，方便预览发现问题。
 - 校验只读文本，不改变事务、写锁或哈希前置条件逻辑。
 
 ### 修改前字节级预检（显示层 ≠ 字节层）
