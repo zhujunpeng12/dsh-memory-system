@@ -1,0 +1,1429 @@
+/* AgentTeams top-right command panel. Relationship lines are semantic: captain
+   delegation runs vertically through member rows; task dependencies run left
+   to right by precomputed depth. All surfaces follow DSH design tokens. */
+
+/* Token aliases: upstream used pre-rc.6 token names that no longer exist in
+   the DSH theme. Map them onto the current real tokens so every existing
+   reference (including JS inline vars) resolves. */
+:root {
+  --dsw-alias-state-success: var(--dsw-alias-state-success-primary);
+  --dsw-alias-state-danger: var(--dsw-alias-state-error-primary);
+  --dsw-alias-state-warning: var(--dsw-alias-state-warn-primary);
+  --dsw-alias-bg-module: var(--dsw-alias-bg-module-platform);
+  --dsw-alias-line-normal: var(--dsw-alias-border-l1);
+  --dsw-alias-line-strong: var(--dsw-alias-border-l2);
+  --dsw-alias-bg-fill-neutral: var(--dsw-alias-bg-layer-2);
+  --dsw-alias-bg-fill-business: var(--dsw-alias-state-business-primary);
+  --dsw-alias-bg-fill-success: var(--dsw-alias-state-success-primary);
+  --dsw-alias-bg-fill-warning: var(--dsw-alias-state-warn-primary);
+  --dsw-alias-bg-fill-danger: var(--dsw-alias-state-error-primary);
+  --dsw-alias-label-on-fill: var(--dsw-alias-label-primary-inverted);
+}
+
+:global(html) {
+  --agent-teams-panel-width: 388px;
+  /* Follow the better-sidebar plugin's width variable (0 when collapsed or
+     when the plugin is absent), so the panel shifts left of that sidebar
+     instead of overlapping it. The layout shift (--agent-teams-panel-shift)
+     stays constant: both the panel and the conversation column move by the
+     same amount, so their relative position is unchanged. */
+  --agent-teams-panel-right: calc(18px + var(--dsh-sidebar-width, 0px));
+  --agent-teams-panel-gap: 14px;
+  --agent-teams-panel-shift: calc(var(--agent-teams-panel-width) + 18px + var(--agent-teams-panel-gap));
+}
+
+/* The web shell owns no top-right slot. While this body-portal panel is open,
+   its global marker lets only the center conversation column yield room. The
+   sidebar stays anchored; the transcript and sticky composer share one smooth
+   width transition because both live under the same conversation root. */
+:global(html[data-agent-teams-panel-open]) :global([data-phase='active']) {
+  box-sizing: border-box;
+  padding-right: var(--agent-teams-panel-shift);
+}
+
+:global([data-phase='active']) {
+  transition: padding-right 360ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: padding-right;
+}
+
+.badge {
+  position: fixed;
+  top: 64px;
+  right: var(--agent-teams-panel-right);
+  z-index: 2147483000;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 40px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 92%, transparent);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--dsw-alias-label-primary) 14%, transparent);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  transition: border-color 150ms ease, transform 120ms ease;
+}
+
+/* Main pill area: title + chips; the grab-to-drag surface. */
+.badgeMain {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: grab;
+  touch-action: none;
+}
+
+/* Far-right expand affordance, mirroring the panel head's collapse button. */
+.badgeExpand {
+  display: inline-flex;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.badgeExpand:hover {
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+}
+
+.badgeExpand:active {
+  transform: scale(0.94);
+}
+
+/* Far-left close-team affordance, same footprint as the expand button but
+   with a danger-tinted hover to warn about archiving the team. */
+.badgeClose {
+  display: inline-flex;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.badgeClose:hover {
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.badgeClose:active {
+  transform: scale(0.94);
+}
+
+.badge:hover {
+  border-color: var(--dsw-alias-border-l2);
+  transform: translateY(-1px);
+}
+
+.badge:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* While a badge drag is in flight, block selection and switch to grabbing. */
+.badge[data-dragging='true'] {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.badge[data-dragging='true'] .badgeMain {
+  cursor: grabbing;
+}
+
+/* Left title group: labels the collapsed pill. */
+.badgeTitle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.badgeMain:focus-visible,
+.badgeChip:focus-visible,
+.badgeExpand:focus-visible,
+.badgeClose:focus-visible,
+.sectionToggle:focus-visible,
+.closeButton:focus-visible,
+.memberRow:focus-visible,
+.taskNode:focus-visible,
+.briefConfirm:focus-visible,
+.briefReject:focus-visible {
+  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline-offset: 2px;
+}
+
+.badgeDot,
+.panelDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dsw-alias-label-tertiary);
+}
+
+.badgeDot[data-busy='true'],
+.panelDot[data-busy='true'] {
+  background: var(--dsw-alias-state-business-primary);
+  animation: agentTeamsPulse 1.25s ease-in-out infinite;
+}
+
+.badgeCount,
+.memberCount,
+.teamStats,
+.stageLabel,
+.taskId {
+  font-variant-numeric: tabular-nums;
+}
+
+/* collapsed-badge avatar strip */
+.badgeAvatarWrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--dsw-alias-label-tertiary);
+  border-radius: 50%;
+  background: var(--dsw-alias-bg-module-platform);
+}
+
+.badgeAvatarWrap[data-ring='undelivered'] {
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+/* Green delivery wave: one expanding ring that scales out and fades. The
+   phase variable (set from JS) anchors every ring to the same 1.8s grid so
+   all ripples spread and fade in lockstep. */
+.badgeAvatarWrap[data-ring='delivered']::after {
+  position: absolute;
+  inset: -3px;
+  border: 2px solid var(--dsw-alias-state-success-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 4px var(--dsw-alias-state-success-primary);
+  content: '';
+  animation: agentTeamsDeliveredWave 1.8s ease-out infinite;
+  animation-delay: var(--wave-phase, 0s);
+}
+
+/* Working red wave: same expanding-ring structure as the delivered wave,
+   recolored to the error token. No static colored border either. */
+.badgeAvatarWrap[data-ring='working']::after {
+  position: absolute;
+  inset: -3px;
+  border: 2px solid var(--dsw-alias-state-error-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 4px var(--dsw-alias-state-error-primary);
+  content: '';
+  animation: agentTeamsDeliveredWave 1.8s ease-out infinite;
+  animation-delay: var(--wave-phase, 0s);
+}
+
+/* Queued orange wave: same expanding-ring structure, recolored to the warn
+   token (pending/claimed tasks waiting to start). No static colored border. */
+.badgeAvatarWrap[data-ring='queued']::after {
+  position: absolute;
+  inset: -3px;
+  border: 2px solid var(--dsw-alias-state-warn-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 4px var(--dsw-alias-state-warn-primary);
+  content: '';
+  animation: agentTeamsDeliveredWave 1.8s ease-out infinite;
+  animation-delay: var(--wave-phase, 0s);
+}
+
+@keyframes agentTeamsDeliveredWave {
+  0% { opacity: 0.85; transform: scale(0.94); }
+  75%, 100% { opacity: 0; transform: scale(1.65); }
+}
+
+/* Reduced-motion breathing ring: opacity only (no movement or scaling),
+   keeping the delivered state visible under prefers-reduced-motion. */
+@keyframes agentTeamsDeliveredPulse {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.85; }
+}
+
+.badgeAvatar {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #0b1d33;
+}
+
+.badgeAvatarFallback {
+  display: inline-flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--dsw-alias-label-primary-inverted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.badgeChip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  max-width: 128px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.badgeChip:hover {
+  background: var(--dsw-alias-bg-fill-neutral);
+}
+
+/* Chips sit as siblings in the pill (2px container gap); restore the ~8px
+   chip-to-chip rhythm that used to come from the main area's inner gap. */
+.badgeChip + .badgeChip {
+  margin-left: 6px;
+}
+
+.badgeChipName {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badgeMore {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 20px;
+}
+
+/* panel shell */
+.panel {
+  position: fixed;
+  top: 64px;
+  right: var(--agent-teams-panel-right);
+  z-index: 2147483000;
+  display: flex;
+  flex-direction: column;
+  width: min(var(--agent-teams-panel-width), calc(100vw - 24px));
+  /* Portal 浮层的包含块即视口（工作区父容器）：高度上限取父容器的 70%。 */
+  max-height: 70dvh;
+  box-sizing: border-box;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-border-l2) 58%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--dsw-alias-bg-module-platform) 95%, transparent);
+  backdrop-filter: blur(20px) saturate(1.08);
+  box-shadow:
+    0 12px 32px color-mix(in srgb, var(--dsw-alias-label-primary) 12%, transparent),
+    0 32px 72px color-mix(in srgb, var(--dsw-alias-label-primary) 16%, transparent);
+  animation: agentTeamsPanelIn 180ms ease-out;
+}
+
+@keyframes agentTeamsPanelIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* While the header drag is in flight, the whole panel blocks selection and
+   switches to a grabbing cursor (inherited by the header). */
+.panel[data-dragging='true'] {
+  cursor: grabbing;
+  user-select: none;
+}
+
+@keyframes agentTeamsPulse {
+  0%, 100% { opacity: 0.42; }
+  50% { opacity: 1; }
+}
+
+.panelHead {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 0 14px 0 16px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  /* Drag handle: pointer drags must not start native touch scrolling. */
+  cursor: grab;
+  touch-action: none;
+}
+
+.panelTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.closeButton {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.closeButton:hover {
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-primary);
+}
+
+.closeButton:active {
+  transform: scale(0.94);
+}
+
+.teams {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Bottom breathing room so the archived footer row never sticks to the
+     panel's bottom edge (12-16px band per feedback). */
+  padding-bottom: 14px;
+}
+
+/* team */
+.team {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 14px 16px;
+  border-bottom: 1px solid var(--dsw-alias-border-l1);
+}
+
+.team:last-child {
+  border-bottom: 0;
+}
+
+.teamHead {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.teamName {
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+  color: var(--dsw-alias-label-primary);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teamStats {
+  display: inline-flex;
+  flex: none;
+  gap: 8px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10.5px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sectionTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.sectionHint {
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Collapse toggle: shared by the dependency map header and the archived
+   section summary row (chevron direction mirrors the expanded state). Font
+   metrics mirror .sectionTitle (11px/600/16px) so the toggle keeps the exact
+   height of a section title, and the chevron gets line-height 0 for precise
+   vertical centering inside the inline-flex box. */
+.sectionToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.sectionToggle > svg {
+  line-height: 0;
+}
+
+/* Row color follows the hierarchy: the title inherits from the button, so
+   dependency headers (primary, overridden below) and the archived footer
+   row (secondary) stay visually distinct while sharing one font metric. */
+.sectionToggle .sectionTitle {
+  color: inherit;
+}
+
+.sectionToggle:hover {
+  color: var(--dsw-alias-label-primary);
+}
+
+.dependencySection .sectionToggle {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* Archived teams section: panel-level footer feel — stronger top divider,
+   extra top spacing and a secondary-color summary row; cards on demand. */
+.archivedSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+/* The summary row indents with the team-card content padding (14px), so the
+   archived footer lines up with the dependency header inside the cards above
+   (same 11px/600/16px metrics via .sectionToggle). */
+.archivedSection > .sectionToggle {
+  margin-left: 14px;
+  margin-right: 14px;
+}
+
+/* captain to member delegation tree */
+.delegationSection {
+  min-width: 0;
+}
+
+.captainNode {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  min-height: 48px;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-business-primary) 32%, var(--dsw-alias-border-l1));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 7%, var(--dsw-alias-bg-module-platform));
+}
+
+.captainAvatar,
+.memberAvatar {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.captainAvatar {
+  width: 36px;
+  height: 36px;
+}
+
+.leadAvatar,
+.memberArt,
+.memberInitial {
+  width: 34px;
+  height: 34px;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: 50%;
+  object-fit: cover;
+  background: #0b1d33;
+}
+
+.captainInfo,
+.memberInfo {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.captainInfo {
+  gap: 2px;
+}
+
+.captainLine,
+.memberLine {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.captainName,
+.memberName {
+  overflow: hidden;
+  color: var(--dsw-alias-label-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.captainRole,
+.memberRole {
+  overflow: hidden;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.captainSummary,
+.memberStatusLine {
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 10.5px;
+  line-height: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.captainState,
+.memberState {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 15px;
+  white-space: nowrap;
+}
+
+.captainState[data-busy='true'],
+.memberState[data-activity='working'] {
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.delegationTree {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-left: 18px;
+  padding: 9px 0 0 20px;
+}
+
+.delegationTree::before {
+  position: absolute;
+  top: 0;
+  bottom: 22px;
+  left: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 48%, var(--dsw-alias-border-l1));
+  content: '';
+}
+
+.memberBlock {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 3px 0 7px;
+}
+
+.memberBranch {
+  position: absolute;
+  top: 23px;
+  right: 100%;
+  display: block;
+  width: 20px;
+  height: 1px;
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 48%, var(--dsw-alias-border-l1));
+}
+
+.memberBranch::before {
+  position: absolute;
+  top: -2px;
+  right: -1px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--dsw-alias-state-business-primary);
+  content: '';
+}
+
+.memberRow {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 4px 6px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+
+.memberRow:hover,
+.memberRow[data-activity='working'] {
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 6%, var(--dsw-alias-bg-module-platform));
+}
+
+.memberRow:active {
+  transform: scale(0.995);
+}
+
+.memberAvatar {
+  width: 34px;
+  height: 34px;
+}
+
+.memberAvatar[data-unread='true']::after {
+  position: absolute;
+  inset: -3px;
+  border: 1px solid var(--dsw-alias-state-business-primary);
+  border-radius: 50%;
+  content: '';
+  animation: agentTeamsRing 1.5s ease-out infinite;
+}
+
+@keyframes agentTeamsRing {
+  0% { opacity: 0.82; transform: scale(0.94); }
+  75%, 100% { opacity: 0; transform: scale(1.18); }
+}
+
+/* Delivery/working ripples for the expanded-panel avatars: the same 2px
+   expanding ring as the collapsed badge (captain node + member rows),
+   anchored to the shared 1.8s grid via --wave-phase. Declared after the
+   unread ring so the state ripple wins when both apply. */
+.memberAvatar[data-ring='delivered']::after,
+.captainAvatar[data-ring='delivered']::after {
+  position: absolute;
+  inset: -3px;
+  border: 2px solid var(--dsw-alias-state-success-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 4px var(--dsw-alias-state-success-primary);
+  content: '';
+  animation: agentTeamsDeliveredWave 1.8s ease-out infinite;
+  animation-delay: var(--wave-phase, 0s);
+}
+
+/* Working red wave: same expanding-ring structure, recolored to the error
+   token. No static colored border either. */
+.memberAvatar[data-ring='working']::after,
+.captainAvatar[data-ring='working']::after {
+  position: absolute;
+  inset: -3px;
+  border: 2px solid var(--dsw-alias-state-error-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 4px var(--dsw-alias-state-error-primary);
+  content: '';
+  animation: agentTeamsDeliveredWave 1.8s ease-out infinite;
+  animation-delay: var(--wave-phase, 0s);
+}
+
+/* Queued orange wave for the panel avatars: same expanding-ring structure,
+   recolored to the warn token (pending/claimed tasks waiting to start). */
+.memberAvatar[data-ring='queued']::after,
+.captainAvatar[data-ring='queued']::after {
+  position: absolute;
+  inset: -3px;
+  border: 2px solid var(--dsw-alias-state-warn-primary);
+  border-radius: 50%;
+  box-shadow: 0 0 4px var(--dsw-alias-state-warn-primary);
+  content: '';
+  animation: agentTeamsDeliveredWave 1.8s ease-out infinite;
+  animation-delay: var(--wave-phase, 0s);
+}
+
+.memberInitial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--dsw-alias-label-primary-inverted);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.stateArt {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 19px;
+  height: 19px;
+  box-sizing: border-box;
+  border: 2px solid var(--dsw-alias-bg-module-platform);
+  border-radius: 50%;
+  object-fit: cover;
+  background: #0b1d33;
+}
+
+.stateArt[data-activity='working'] {
+  animation: agentTeamsFloat 2.4s ease-in-out infinite;
+}
+
+.stateArt[data-activity='idle'] {
+  animation: agentTeamsBreathe 4.2s ease-in-out infinite;
+}
+
+.stateArt[data-activity='unknown'] {
+  animation: agentTeamsThink 2.8s ease-in-out infinite;
+}
+
+@keyframes agentTeamsFloat {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-2px) rotate(4deg); }
+}
+
+@keyframes agentTeamsBreathe {
+  0%, 100% { opacity: 0.82; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.06); }
+}
+
+@keyframes agentTeamsThink {
+  0%, 100% { transform: rotate(-7deg); }
+  50% { transform: rotate(7deg); }
+}
+
+.memberState {
+  margin-left: auto;
+}
+
+.memberCount {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 10.5px;
+  line-height: 16px;
+}
+
+.assignmentLine {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 0 6px 0 52px;
+}
+
+.assignmentLabel {
+  flex: none;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 9.5px;
+  line-height: 14px;
+}
+
+.assignmentTasks {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.assignmentChip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 16px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 14px;
+}
+
+.assignmentChip[data-state='running'] {
+  background: var(--dsw-alias-state-business-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+}
+
+.assignmentChip[data-state='completed'] {
+  background: var(--dsw-alias-state-success-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+}
+
+.assignmentChip[data-state='blocked'] {
+  background: var(--dsw-alias-state-warn-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+}
+
+.assignmentChip[data-state='failed'] {
+  background: var(--dsw-alias-state-error-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+}
+
+.assignmentChip[data-state='cancelled'] {
+  color: var(--dsw-alias-label-tertiary);
+  text-decoration: line-through;
+}
+
+.unreadPill {
+  flex: none;
+  color: var(--dsw-alias-state-business-primary);
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 14px;
+  white-space: nowrap;
+}
+
+.taskEmpty {
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 9.5px;
+  line-height: 14px;
+}
+
+/* dependency stages */
+.dependencySection {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.stageFlow {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 1px 1px 5px;
+  scrollbar-width: thin;
+}
+
+.stageGroup {
+  position: relative;
+  display: flex;
+  flex: 1 0 126px;
+  min-width: 126px;
+}
+
+.stageConnector {
+  display: flex;
+  flex: none;
+  width: 22px;
+  height: 14px;
+  align-items: center;
+  margin-top: 0;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.stageLine {
+  display: block;
+  flex: 1;
+  height: 1px;
+  background: var(--dsw-alias-border-l2);
+}
+
+.stageColumn {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.stageLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 2px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 14px;
+}
+
+.stageLabel span {
+  display: inline-flex;
+  min-width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-2);
+  font-size: 8.5px;
+}
+
+.stageTasks {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.taskNode {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 72px;
+  padding: 7px 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-module-platform);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 140ms ease, opacity 140ms ease, transform 120ms ease, background-color 140ms ease;
+}
+
+.taskNode:hover,
+.taskNode[data-focused='true'] {
+  border-color: var(--dsw-alias-state-business-primary);
+  background: color-mix(in srgb, var(--dsw-alias-state-business-primary) 6%, var(--dsw-alias-bg-module-platform));
+  transform: translateY(-1px);
+}
+
+.taskNode[data-dimmed='true'] {
+  opacity: 0.34;
+}
+
+.taskNode[data-state='completed'] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 48%, var(--dsw-alias-border-l1));
+}
+
+.taskNode[data-state='blocked'] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 52%, var(--dsw-alias-border-l1));
+}
+
+.taskNode[data-state='failed'] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 56%, var(--dsw-alias-border-l1));
+}
+
+.taskNodeHead,
+.taskRoute {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+  min-width: 0;
+}
+
+.taskId {
+  color: var(--dsw-alias-label-tertiary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+.taskBadge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  min-height: 14px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 8.5px;
+  font-weight: 600;
+  line-height: 13px;
+}
+
+.taskBadge[data-state='running'] {
+  background: var(--dsw-alias-state-business-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+}
+
+.taskBadge[data-state='completed'] {
+  background: var(--dsw-alias-state-success-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+}
+
+.taskBadge[data-state='blocked'] {
+  background: var(--dsw-alias-state-warn-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+}
+
+.taskBadge[data-state='failed'] {
+  background: var(--dsw-alias-state-error-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+}
+
+.taskBadge[data-state='cancelled'] {
+  color: var(--dsw-alias-label-tertiary);
+  text-decoration: line-through;
+}
+
+.taskSubject {
+  overflow: hidden;
+  display: -webkit-box;
+  min-height: 30px;
+  color: var(--dsw-alias-label-primary);
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 15px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.taskRoute {
+  margin-top: auto;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 8.5px;
+  line-height: 13px;
+}
+
+.taskOwner,
+.taskDeps {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.taskOwner {
+  max-width: 48%;
+  color: var(--dsw-alias-label-secondary);
+  font-weight: 600;
+}
+
+.taskDeps {
+  flex: 1;
+  text-align: right;
+}
+
+.taskStart {
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* captain decisions */
+.unclaimed {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--dsw-alias-border-l1);
+}
+
+.unclaimedTitle {
+  color: var(--dsw-alias-label-secondary);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.emptyHint {
+  padding: 10px 12px;
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+/* historic teams */
+.team[data-historic],
+.archivedWrap {
+  opacity: 0.82;
+}
+
+.historicPill {
+  flex: none;
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-tertiary);
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.members {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :global([data-phase='active']),
+  .panel,
+  .badge,
+  .badgeDot,
+  .panelDot,
+  .stateArt,
+  .memberAvatar[data-unread='true']::after {
+    animation: none;
+    transition: none;
+  }
+
+  /* Keep the delivered state alive under reduced motion: the spreading wave
+     is replaced by a breathing green ring (opacity only, no movement). */
+  .badgeAvatarWrap[data-ring='delivered']::after,
+  .memberAvatar[data-ring='delivered']::after,
+  .captainAvatar[data-ring='delivered']::after {
+    animation: agentTeamsDeliveredPulse 2.4s ease-in-out infinite;
+  }
+
+  /* Same breathing fallback for the working wave, in red. */
+  .badgeAvatarWrap[data-ring='working']::after,
+  .memberAvatar[data-ring='working']::after,
+  .captainAvatar[data-ring='working']::after {
+    animation: agentTeamsDeliveredPulse 2.4s ease-in-out infinite;
+  }
+
+  /* Same breathing fallback for the queued wave, in orange. */
+  .badgeAvatarWrap[data-ring='queued']::after,
+  .memberAvatar[data-ring='queued']::after,
+  .captainAvatar[data-ring='queued']::after {
+    animation: agentTeamsDeliveredPulse 2.4s ease-in-out infinite;
+  }
+}
+
+@media (max-width: 960px) {
+  :global(html) {
+    --agent-teams-main-shift: 0px;
+  }
+
+  :global(html[data-agent-teams-panel-open]) :global([data-phase='active']) {
+    padding-right: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  :global(html) {
+    /* Keep the narrow-screen inset while still clearing the better-sidebar. */
+    --agent-teams-panel-right: calc(10px + var(--dsh-sidebar-width, 0px));
+  }
+
+  .panel {
+    top: 56px;
+    left: 10px;
+    width: auto;
+    max-height: calc(100dvh - 68px);
+  }
+
+  .badge {
+    top: 56px;
+  }
+
+  .teamStats span[data-stat='messages'] {
+    display: none;
+  }
+
+  .captainNode {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .captainState {
+    display: none;
+  }
+
+  .delegationTree {
+    margin-left: 12px;
+    padding-left: 15px;
+  }
+
+  .memberBranch {
+    width: 15px;
+  }
+
+  .assignmentLine {
+    padding-left: 45px;
+  }
+}
+
+/* demand brief card */
+.briefCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 6px 0;
+  padding: 8px 10px;
+  box-sizing: border-box;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-module-platform);
+  font-size: 12px;
+}
+
+.briefCard[data-status='submitted'] {
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+.briefCard[data-status='confirmed'] {
+  border-color: var(--dsw-alias-state-success-primary);
+}
+
+.briefCard[data-status='rejected'] {
+  border-color: var(--dsw-alias-state-error-primary);
+}
+
+.briefHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.briefTitle {
+  color: var(--dsw-alias-label-primary);
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.briefStatus {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.briefField {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.briefField > span:first-child {
+  flex: 0 0 52px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+.briefField > span:last-child {
+  overflow-wrap: anywhere;
+  min-width: 0;
+  color: var(--dsw-alias-label-secondary);
+  white-space: pre-wrap;
+}
+
+.briefField[data-reject] > span:last-child {
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.briefActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.briefConfirm,
+.briefReject {
+  padding: 2px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+
+.briefConfirm:active,
+.briefReject:active {
+  transform: scale(0.96);
+}
+
+.briefConfirm:disabled,
+.briefReject:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
+}
+
+.briefConfirm {
+  background: var(--dsw-alias-state-success-primary);
+  color: var(--dsw-alias-label-primary-inverted);
+}
+
+.briefReject {
+  border-color: var(--dsw-alias-state-error-primary);
+  background: transparent;
+  color: var(--dsw-alias-state-error-primary);
+}

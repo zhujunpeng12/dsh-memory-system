@@ -125,7 +125,7 @@ flowchart TD
 
 **闭环**：复盘出候选 → 给出降低工具错误率的方案 → 派发解决（单一任务 → 独立子 agent；优化点多 → 多 agent 团队按角色分工，依赖三问/文件所有权/交付即验收）→ 解决完成后解析会话轨迹写入 events；用户说「下次再处理」→ 跳过解决、直接写入 events。人工核验后，普通探索失败不沉淀；重复 ≥3 次的模式毕业进 rules-core——规则与事件回灌到下一次会话的热记忆，形成进化闭环。
 
-**怎么用**：`memory_trajectory_review` 工具，或 `python vault-guard/trajectory-review.py --cwd <目录>`。配套安装 `plugins/evidence-ledger/` 才有工具账本数据。
+**怎么用**：`memory_trajectory_review` 工具，或 `python vault-guard/trajectory-review.py --cwd <目录>`。配套安装 `plugins/evidence-ledger/` 才有工具账本数据；多 agent 派发执行件见 `plugins/agent-teams/`（基于 [NanmiCoder/dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) 的增强 fork）。
 
 ## 作为 DSH 插件安装（推荐）
 
@@ -250,7 +250,8 @@ python vault-guard\recall.py --query "继续上次的XXX" --cwd "C:\path\to\proj
 │   ├── trajectory-review.py    # 轨迹复盘候选（用户纠正 = 硬信号）
 │   └── test_*.py               # 回归测试（unittest，无外部依赖）
 ├── plugins/
-│   └── evidence-ledger/        # 配套插件：工具调用账本（轨迹复盘证据层）
+│   ├── evidence-ledger/        # 配套插件：工具调用账本（轨迹复盘证据层）
+│   └── agent-teams/            # 配套插件：多 agent 团队编排（增强 fork，复盘派发执行件）
 ├── templates/                  # 脱敏记忆库骨架（10 分钟搭出自己的记忆系统）
 ├── hooks.example.json          # DSH hooks 装配示例
 ├── .env.example                # 环境变量示例
