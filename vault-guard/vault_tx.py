@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from vault_lock import VaultLock, atomic_json
+from vault_path import vault_root
 
 
 TERMINAL_STATES = {"committed", "committed_recovered", "rolled_back"}
@@ -133,7 +134,7 @@ class VaultTransaction:
         heartbeat_seconds: float = 5.0,
         transaction_id: str | None = None,
     ) -> None:
-        self.vault = (vault or Path(os.environ.get("MEMORY_VAULT") or (Path.home() / "Documents" / "Obsidian Vault"))).resolve()
+        self.vault = (vault or vault_root()).resolve()
         self.memory = self.vault / "memory"
         self.transaction_id = transaction_id or f"{int(time.time())}-{uuid.uuid4().hex}"
         self.purpose = purpose

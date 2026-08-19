@@ -1,6 +1,10 @@
 # 记忆库模板（Memory Vault Template）
 
-用这个骨架在 10 分钟内搭出自己的记忆库。把 `vault/` 复制到你的 `MEMORY_VAULT` 指向的位置（默认 `~/Documents/Obsidian Vault`），然后按注释填写。
+用这个骨架搭出自己的记忆库。**基础模式下无需手动复制**——`bootstrap.py` 首次运行会自动创建最小骨架（`memory/{events,index}` + `projects/` + 空 `user_profile.md`/`rules.md`）于默认位置 `~/.dsh-memory/`。
+
+本模板用于两种场景：
+1. **Vault 模式**：把 `vault/` 复制到你的 Obsidian Vault（设置 `MEMORY_VAULT` 指向它）；
+2. **基础模式个性化**：复制到 `~/.dsh-memory/` 替换自动生成的占位文件，再按注释填写。
 
 ## 结构
 
@@ -14,7 +18,7 @@ vault/
 └── projects/                     # 项目笔记：<项目名>/<项目名>.md
 ```
 
-## 快速开始
+## 快速开始（Vault 模式）
 
 ```powershell
 # 1. 复制骨架到目标位置

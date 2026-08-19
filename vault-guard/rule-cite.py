@@ -18,7 +18,9 @@ except Exception:
 
 
 HOME = Path.home()
-VAULT = Path(os.environ.get("MEMORY_VAULT") or (HOME / "Documents" / "Obsidian Vault"))
+from vault_path import vault_root
+
+VAULT = vault_root()
 MEMORY = VAULT / "memory"
 RULES = MEMORY / "rules.md"
 CORE = MEMORY / "rules-core.md"

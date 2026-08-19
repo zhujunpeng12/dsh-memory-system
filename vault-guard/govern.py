@@ -27,7 +27,9 @@ except Exception:
     pass
 
 
-DEFAULT_VAULT = Path(os.environ.get("MEMORY_VAULT") or (Path.home() / "Documents" / "Obsidian Vault"))
+from vault_path import vault_root
+
+DEFAULT_VAULT = vault_root()
 DATE_RE = re.compile(r"^(20\d{2})-(\d{2})-(\d{2})")
 HEADING_RE = re.compile(r"^##\s+(.+?)\s*$")
 RULE_RE = re.compile(r"^(\d+[a-z]?)\.\s+⏱×(\d+)\s+(.*)$", re.I)

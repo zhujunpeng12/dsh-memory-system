@@ -20,7 +20,9 @@ except Exception:
 
 HOME = Path.home()
 HERE = Path(__file__).resolve().parent
-VAULT = Path(os.environ.get("MEMORY_VAULT") or (HOME / "Documents" / "Obsidian Vault"))
+from vault_path import vault_root
+
+VAULT = vault_root()
 DSH_HOME = Path(os.environ.get("DSH_HOME") or (HOME / ".dsh"))
 MEMORY = VAULT / "memory"
 PROJECTS = VAULT / "projects"
@@ -300,6 +302,29 @@ def build_packet(cwd: Path, max_bytes: int) -> str:
     return clip_utf8(packet, max_bytes, "\n…[热包达到总预算；完整来源见冷层入口]\n")
 
 
+def ensure_vault() -> bool:
+    """首次运行自动初始化：记忆库目录不存在时创建最小骨架。
+
+    幂等：已存在则不动。创建 memory/{events,index} + projects/ 与空
+    user_profile.md / rules.md（占位），让新用户第一次跑就有可用记忆库，
+    不依赖 Obsidian，也不报「目录不存在」。返回 True 表示本次创建了骨架。
+    """
+    if VAULT.exists():
+        return False
+    try:
+        for sub in ("memory", "memory/events", "memory/index", "projects"):
+            (VAULT / sub).mkdir(parents=True, exist_ok=True)
+        (VAULT / "memory" / "user_profile.md").write_text(
+            "# 用户画像\n\n> 我是谁。不绑定任何具体项目。\n", encoding="utf-8"
+        )
+        (VAULT / "memory" / "rules.md").write_text(
+            "# 经验规则\n\n> 第二层记忆 — 标准做法。\n", encoding="utf-8"
+        )
+        return True
+    except OSError:
+        return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate a bounded DSH hot-memory packet.")
     parser.add_argument("--cwd", default=str(Path.cwd()))
@@ -310,6 +335,8 @@ def main() -> int:
     # 防御：剥离 argv 中可能存在的孤立代理字符（stdin 被错误编码解码后传入），
     # 否则 build_packet 的严格 UTF-8 编码会抛 UnicodeEncodeError。
     args_cwd = args.cwd.encode("utf-8", errors="replace").decode("utf-8")
+    if ensure_vault():
+        print(f"[memory] 已初始化记忆库于 {VAULT}，可直接开始使用（无 Obsidian 依赖）")
     try:
         cwd = Path(args_cwd).resolve()
     except OSError:

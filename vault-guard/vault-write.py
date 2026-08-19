@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -16,7 +17,9 @@ except Exception:
     pass
 
 
-VAULT = Path.home() / "Documents" / "Obsidian Vault"
+from vault_path import vault_root
+
+VAULT = vault_root()
 MEMORY = VAULT / "memory"
 
 # PowerShell 反引号转义防护：内联字符串里的 `` `a `` 会被解释成 BEL(0x07)+'a'，

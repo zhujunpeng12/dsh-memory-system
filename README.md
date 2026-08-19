@@ -4,7 +4,7 @@
 
 > 一套给 DeepSeek Harness (DSH) Agent 用的本地优先记忆系统：启动热记忆注入、可解释冷召回、租约锁保护的事务写入、只读治理与轨迹复盘。纯 Python + Markdown 文件，无数据库、无向量服务、无外部服务依赖。
 
-**重要边界：本仓库只包含「机制」，不包含任何个人数据。** 记忆内容（画像、规则、事件、项目笔记）始终留在使用者自己的 Obsidian Vault 里，通过环境变量指向。
+**重要边界：本仓库只包含「机制」，不包含任何个人数据。** 记忆内容（画像、规则、事件、项目笔记）始终留在使用者本地——默认在 `~/.dsh-memory/`（无需 Obsidian），或通过 `MEMORY_VAULT` 环境变量指向自己的 Obsidian Vault。
 
 ## 为什么需要它
 
@@ -127,20 +127,20 @@ flowchart TD
 
 **怎么用**：`memory_trajectory_review` 工具，或 `python vault-guard/trajectory-review.py --cwd <目录>`。配套安装 `plugins/evidence-ledger/` 才有工具账本数据；多 agent 派发执行件见 `plugins/agent-teams/`（基于 [NanmiCoder/dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) 的增强 fork）。
 
-## 作为 DSH 插件安装（推荐）
+## 作为 DSH 插件安装（推荐，一行命令）
 
 插件形态把记忆能力直接注册为 Agent 工具，并随 DSH 装配自动生效：
 
 ```bash
-# 从 dsh-plugin topic 仓库安装（审核后发布时可用）
-dsh plugin add @zhujunpeng12/dsh-memory-system
+# 从 GitHub 直接安装（无需 npm 发布、无需手动配环境/hooks/Vault 目录）
+dsh plugin add github:zhujunpeng12/dsh-memory-system
 
 # 或本地开发安装
 npm pack            # 生成 tarball
 dsh plugin add ./zhujunpeng12-dsh-memory-system-0.1.0.tgz
 ```
 
-安装后重启 Harness，Agent 获得 6 个记忆工具：
+安装后重启 Harness，Agent 自动获得 6 个记忆工具，且**每个新会话自动注入热记忆包**（index.js 原生监听 pre-step，零手动 hooks 配置；`DSH_MEMORY_AUTO_INJECT=false` 可关闭）：
 
 | 工具 | 作用 | 写操作 |
 |---|---|---|
@@ -151,80 +151,55 @@ dsh plugin add ./zhujunpeng12-dsh-memory-system-0.1.0.tgz
 | `memory_trajectory_review` | 轨迹复盘候选（用户纠正 = 硬信号） | 只读 |
 | `memory_write` | 授权事务写入（默认 dry-run） | 需确认 |
 
-`memory_write` 默认只预览，`apply=true` 且经用户确认后才落盘；`tools/pre-execute` 钩子会强制弹确认。所有工具通过 `MEMORY_VAULT` / `DSH_HOME` 环境变量定位你的记忆库。
+`memory_write` 默认只预览，`apply=true` 且经用户确认后才落盘；`tools/pre-execute` 钩子会强制弹确认。所有工具通过 `MEMORY_VAULT` / `DSH_HOME` 环境变量定位你的记忆库（不设置则用默认值，见下）。
 
 **轨迹复盘证据层（可选配套）**：`memory_trajectory_review` 依赖工具调用账本（`${DSH_HOME}/storages/tool-telemetry.json`）。安装配套插件 `plugins/evidence-ledger/`（工具账本，零 inject）后，每个会话的工具调用与错误会自动累计，复盘才有数据可扫。不装则复盘只扫 session 日志中的用户纠正信号。
 
-> 手动 hooks 注入（可选）：参考 `hooks.example.json` 把 `hook-first-prompt.py` 挂到 `UserPromptSubmit`，每个新会话首个提示自动注入热包。
+## 快速开始（3 步，装完即用）
 
-## 快速开始
+### 1. 安装
 
-### 1. 准备目录结构
-
-在任意位置建一个记忆库（默认约定 `~/Documents/Obsidian Vault`，可用环境变量覆盖）：
-
-```
-Obsidian Vault/
-├── memory/
-│   ├── user_profile.md      # 用户画像
-│   ├── rules.md             # 完整规则
-│   ├── rules-core.md        # 活跃核心规则（可由 sync-core.py 生成）
-│   ├── events/              # 事件日志（YYYY-MM-DD.md）
-│   ├── index/               # 月度索引
-│   └── projects/            # 项目笔记
-└── projects/                # 项目目录（cwd 祖先匹配）
+```bash
+dsh plugin add github:zhujunpeng12/dsh-memory-system
 ```
 
-### 2. 配置环境变量
+重启 Harness。
 
-复制 `.env.example` 并按需设置：
+### 2. 首次运行自动初始化（无需任何手动配置）
+
+第一次会话自动完成两件事：
+- 在默认位置 `~/.dsh-memory/` 创建记忆库骨架（`memory/{events,index}` + `projects/` + 空 `user_profile.md`/`rules.md`），控制台打印 `已初始化记忆库于 ...`；
+- 该会话首轮自动注入热记忆包（画像/规则/项目摘要/近期事件），开箱即有记忆。
+
+不装 Obsidian 也能完整使用；记忆库是普通本地目录（Python 标准库 + Markdown，零外部依赖）。
+
+### 3. 验证
+
+让 Agent 执行 `memory_gate`（机械门禁检查）确认链路正常；之后每次会话自动带热包，需要细节时 Agent 会用 `memory_recall` 冷召回。
+
+### Vault 模式（可选）
+
+想用 Obsidian 可视化时，设置环境变量指向你的 Vault，重启后记忆切换到 Vault：
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `MEMORY_VAULT` | `~/Documents/Obsidian Vault` | 记忆库根目录（含 `memory/` 与 `projects/`） |
+| `MEMORY_VAULT` | `~/.dsh-memory` | 记忆库根目录（含 `memory/` 与 `projects/`） |
 | `DSH_HOME` | `~/.dsh` | DSH 家目录（hooks 配置、storages 等） |
-
-Windows PowerShell 示例：
 
 ```powershell
 $env:MEMORY_VAULT = "C:\Users\you\Documents\Obsidian Vault"
-$env:DSH_HOME = "C:\Users\you\.dsh"
 ```
 
-### 3. 生成热记忆包
+Vault 模式下把 `templates/vault/` 骨架复制到你的 Vault（见 `templates/README.md`）。
+
+### 独立脚本用法（不装插件时）
 
 ```powershell
-python vault-guard\bootstrap.py --cwd "C:\path\to\project" --max-bytes 14000
+python vault-guard\bootstrap.py --cwd "C:\path\to\project" --max-bytes 14000   # 热包
+python vault-guard\recall.py --query "继续上次的XXX" --cwd "C:\path\to\project" --force  # 冷召回
 ```
 
-### 4. 冷召回
-
-```powershell
-python vault-guard\recall.py --query "继续上次的XXX" --cwd "C:\path\to\project" --force
-```
-
-### 5. 接入 DSH hooks（可选）
-
-脚本现在都用 `__file__` 包内相对定位（不依赖安装位置），hooks 命令只需指向 `hook-first-prompt.py` 的**实际所在路径**。参考 `hooks.example.json`，把路径替换为插件包内脚本位置，写入 DSH 的 hooks 配置（如 `~/.dsh/hooks-dsh.json`）：
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          { "type": "command", "command": "python \"<插件包路径>/vault-guard/hook-first-prompt.py\"" }
-        ]
-      }
-    ]
-  }
-}
-```
-
-> `DSH_HOME` 环境变量仍用于定位 DSH 运行时存储（storages/sessions 等），脚本自身互相调用则用包内相对路径——插件装到哪里都能跑，无需把 vault-guard 复制到 `$DSH_HOME`。
-
-每个新会话首个提示会自动注入热记忆包；命中召回信号（历史引用 + 具体主题）时追加冷包。
+> 手动 hooks（可选，仅独立脚本用法需要）：参考 `hooks.example.json` 把 `hook-first-prompt.py` 挂到 `UserPromptSubmit`；插件用法已内置自动注入，无需此步。`DSH_HOME` 环境变量仍用于定位 DSH 运行时存储（storages/sessions 等），脚本自身互相调用则用包内相对路径——插件装到哪里都能跑，无需把 vault-guard 复制到 `$DSH_HOME`。
 
 ## 目录结构
 

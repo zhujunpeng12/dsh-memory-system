@@ -6,9 +6,15 @@
 // (evidence-driven candidates) and write (authorized transactional writes,
 // dry-run by default).
 //
-// All memory content lives in the user's own Obsidian Vault (MEMORY_VAULT),
-// never inside this plugin. Zero external npm dependencies; only Node built-ins
-// plus the Python standard library.
+// Also injects the hot-memory packet automatically: on each new session's
+// first pre-step it runs bootstrap.py and prepends the packet to the model
+// context (zero manual hooks configuration). Disable with
+// DSH_MEMORY_AUTO_INJECT=false.
+//
+// Memory content lives in a plain local directory by default (~/.dsh-memory,
+// no Obsidian required); set MEMORY_VAULT to point at an Obsidian Vault to
+// switch to vault mode. First run auto-initializes the skeleton. Zero external
+// npm dependencies; only Node built-ins plus the Python standard library.
 //
 // Changing index.js requires a Harness restart to take effect (module code is
 // not hot-reloaded).
@@ -19,6 +25,7 @@ import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineTool } from '@deepseek-ai/dsh-tools'
+import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { buildToolInvocation, TMPFILE_MARKER } from './bridge.js'
 
 export const name = 'dsh-memory-system'
@@ -46,7 +53,7 @@ function runEnv() {
   return {
     ...process.env,
     // Empty values fall back to each script's default (home / ".dsh",
-    // home / "Documents" / "Obsidian Vault").
+    // home / ".dsh-memory").
     MEMORY_VAULT: process.env.MEMORY_VAULT ?? '',
     DSH_HOME: process.env.DSH_HOME ?? '',
   }
@@ -299,6 +306,40 @@ export function apply(ctx) {
       reason: 'memory_write mutates the memory vault. Review the exact target and content; it is dry-run unless apply=true.',
     }
   })
+
+  // 热包自动注入（零手动 hooks 配置）：每个新会话的首轮 pre-step 注入一次
+  // bootstrap 热包。按 session.header.id 去重（agent 持久跨会话，session 会变）；
+  // DSH_MEMORY_AUTO_INJECT=false 可关闭。
+  // 与 dsh-hooks-claude-code 的 UserPromptSubmit 映射到 agent/pre-step 同一机制，
+  // 但原生实现，不依赖任何 hooks 配置。
+  const PLUGIN_SOURCE = { kind: 'plugin', plugin: 'dsh-memory-system' }
+  const injectedSessions = new Set() // sessionId -> injected
+  const AUTO_INJECT = process.env.DSH_MEMORY_AUTO_INJECT !== 'false'
+  ctx.on('agent/pre-step', async ({ agent, messages, turn, signal }, next) => {
+    if (!AUTO_INJECT || messages.length === 0) return next()
+    const header = agent?.session?.header
+    const sid = header?.id
+    if (!sid || injectedSessions.has(sid)) return next()
+    try {
+      const cwd = typeof header?.cwd === 'string' && header.cwd !== '' ? header.cwd : process.cwd()
+      const run = await runScript('bootstrap.py', ['--cwd', cwd], { timeoutMs: 60_000 })
+      if (run.ok && run.stdout.trim()) {
+        injectedSessions.add(sid)
+        if (injectedSessions.size > 2000) injectedSessions.clear() // 安全阀
+        const ours = createUserMessage({
+          content: [{ type: 'text', text: run.stdout.trim() }],
+          source: PLUGIN_SOURCE,
+        })
+        const downstream = await next()
+        if (downstream.kind !== 'enter') return downstream
+        return { kind: 'enter', messages: [...downstream.messages, ours] }
+      }
+    } catch {
+      // 注入失败静默：记忆是增强，不能打断会话
+    }
+    return next()
+  })
+
   ctx.effect(() => () => {
     for (const dispose of [...agentTools.values()].reverse()) dispose()
     agentTools.clear()

@@ -4,7 +4,7 @@
 
 > Local-first persistent memory for DeepSeek Harness (DSH) agents: bounded hot-memory bootstrap, explainable cold recall, lease-locked transactional writes, read-only governance, and trajectory review. Pure Python + Markdown. No database, no vector service, no external dependencies.
 
-**Important boundary: this repository contains only the mechanism, never any personal data.** Memory content (profile, rules, events, project notes) always stays in the user's own Obsidian Vault, referenced through environment variables.
+**Important boundary: this repository contains only the mechanism, never any personal data.** Memory content (profile, rules, events, project notes) always stays on the user's machine — by default in `~/.dsh-memory/` (no Obsidian required), or in your own Obsidian Vault when `MEMORY_VAULT` points there.
 
 ## Why
 
@@ -73,17 +73,19 @@ Legend: solid = scripted execution; dashed = on-demand read / human review; diam
 
 </details>
 
-## Install as a DSH plugin (recommended)
+## Install as a DSH plugin (recommended, one command)
 
 The plugin form registers memory capabilities directly as agent tools:
 
 ```bash
-dsh plugin add @zhujunpeng12/dsh-memory-system        # once published
-# or local:
+# Install straight from GitHub (no npm publish, no manual env/hooks/vault setup)
+dsh plugin add github:zhujunpeng12/dsh-memory-system
+
+# or local development:
 npm pack && dsh plugin add ./zhujunpeng12-dsh-memory-system-0.1.0.tgz
 ```
 
-Restart the Harness. The agent gains 6 tools:
+Restart the Harness. The agent gains 6 tools, and **every new session gets the hot-memory packet injected automatically** (native pre-step listener in index.js — zero manual hooks configuration; disable with `DSH_MEMORY_AUTO_INJECT=false`):
 
 | Tool | Purpose | Writes |
 |---|---|---|
@@ -98,7 +100,7 @@ Restart the Harness. The agent gains 6 tools:
 
 **Trajectory review evidence layer (optional companion)**: `memory_trajectory_review` reads the tool-call ledger (`${DSH_HOME}/storages/tool-telemetry.json`). Install the companion plugin `plugins/evidence-ledger/` (zero inject) to accumulate per-session tool calls and errors automatically. Without it, the review still scans session logs for user-correction signals.
 
-> Optional manual hooks: see `hooks.example.json` to attach `hook-first-prompt.py` to `UserPromptSubmit` for automatic hot-packet injection on the first prompt of every session.
+> Optional manual hooks (standalone script usage only): see `hooks.example.json` to attach `hook-first-prompt.py` to `UserPromptSubmit`. The plugin form injects automatically — this step is not needed.
 
 ## Six layers in detail (what each layer does)
 
@@ -154,41 +156,54 @@ Restart the Harness. The agent gains 6 tools:
 
 **How**: `memory_trajectory_review` tool, or `python vault-guard/trajectory-review.py --cwd <dir>`. Install `plugins/evidence-ledger/` for ledger data.
 
-## Quick start (standalone)
+## Quick start (3 steps, works out of the box)
 
-### 1. Create a memory vault
-
-Copy the sanitized skeleton (10 minutes):
+### 1. Install
 
 ```bash
-cp -r templates/vault/* "$HOME/Documents/Obsidian Vault/"
-mv "$HOME/Documents/Obsidian Vault/memory/user_profile.example.md" "$HOME/Documents/Obsidian Vault/memory/user_profile.md"
-mv "$HOME/Documents/Obsidian Vault/memory/rules.example.md" "$HOME/Documents/Obsidian Vault/memory/rules.md"
+dsh plugin add github:zhujunpeng12/dsh-memory-system
 ```
 
-### 2. Configure environment
+Restart the Harness.
+
+### 2. First run auto-initializes (no manual setup)
+
+The first session automatically:
+- creates the memory skeleton at `~/.dsh-memory/` (`memory/{events,index}` + `projects/` + empty `user_profile.md`/`rules.md`), printing `已初始化记忆库于 ...`;
+- injects the hot-memory packet on the first prompt (profile/rules/project summary/recent events) — usable memory from the very first session.
+
+No Obsidian needed. The vault is a plain local directory (Python stdlib + Markdown, zero external deps).
+
+### 3. Verify
+
+Ask the agent to run `memory_gate` (mechanical gate checks) to confirm the pipeline. Afterwards every session carries the hot packet automatically; `memory_recall` is used on demand for details.
+
+### Vault mode (optional)
+
+To use Obsidian for visualization, point `MEMORY_VAULT` at your vault and restart:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `MEMORY_VAULT` | `~/Documents/Obsidian Vault` | Vault root (must contain `memory/` and `projects/`) |
+| `MEMORY_VAULT` | `~/.dsh-memory` | Vault root (must contain `memory/` and `projects/`) |
 | `DSH_HOME` | `~/.dsh` | DSH home (hooks config, storages) |
 
-### 3. Generate the hot packet
-
-```bash
-python vault-guard/bootstrap.py --cwd /path/to/project --max-bytes 14000
+```powershell
+$env:MEMORY_VAULT = "C:\Users\you\Documents\Obsidian Vault"
 ```
 
-### 4. Cold recall
+Copy the `templates/vault/` skeleton into your vault (see `templates/README.md`).
+
+### Standalone script usage (without the plugin)
 
 ```bash
-python vault-guard/recall.py --query "continue the previous X" --cwd /path/to/project --force
+python vault-guard/bootstrap.py --cwd /path/to/project --max-bytes 14000   # hot packet
+python vault-guard/recall.py --query "continue the previous X" --cwd /path/to/project --force  # cold recall
 ```
 
 ## Repository layout
 
 ```
-├── index.js                    # DSH host plugin: 5 memory tools + write guard
+├── index.js                    # DSH host plugin: 6 memory tools + hot-packet auto-inject + write guard
 ├── package.json                # npm package (dsh-memory-system)
 ├── dsh.plugin.json             # DSH plugin manifest
 ├── cordis.patch.yml            # DSH bundle patch

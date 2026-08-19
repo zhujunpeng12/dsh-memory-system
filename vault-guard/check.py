@@ -28,7 +28,9 @@ try:
 except Exception:
     pass
 
-VAULT = Path(os.environ.get("MEMORY_VAULT") or (Path.home() / "Documents" / "Obsidian Vault"))
+from vault_path import vault_root
+
+VAULT = vault_root()
 MEM = VAULT / "memory"
 EV = MEM / "events"
 RULES = MEM / "rules.md"

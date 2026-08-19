@@ -28,7 +28,9 @@ except Exception:
     pass
 
 
-VAULT = Path(os.environ.get("MEMORY_VAULT") or (Path.home() / "Documents" / "Obsidian Vault"))
+from vault_path import vault_root
+
+VAULT = vault_root()
 HEADING_RE = re.compile(r"^(#{1,3})\s+(.+?)\s*$")
 ASCII_RE = re.compile(r"[a-z0-9][a-z0-9_.:/-]*", re.I)
 HAN_RUN_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]+")

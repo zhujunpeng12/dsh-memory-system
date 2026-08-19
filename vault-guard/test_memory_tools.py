@@ -105,7 +105,7 @@ class RuleCitationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
             guard = home / ".dsh" / "vault-guard"
-            memory = home / "Documents" / "Obsidian Vault" / "memory"
+            memory = home / ".dsh-memory" / "memory"
             guard.mkdir(parents=True)
             memory.mkdir(parents=True)
             shutil.copy2(ROOT / "vault-lock.py", guard / "vault-lock.py")
