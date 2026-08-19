@@ -1,7 +1,7 @@
 {
   "name": "@zhujunpeng12/dsh-memory-system",
   "version": "0.1.0",
-  "description": "Local-first persistent memory infrastructure for DeepSeek Harness: bounded hot-memory bootstrap, explainable cold recall (exact + Chinese BM25), lease-lock transactional writes, read-only governance, and trajectory review. Pure Python + Markdown, zero external dependencies.",
+  "description": "Local-first persistent memory infrastructure for DeepSeek Harness: bounded hot-memory bootstrap, explainable cold recall (exact + Chinese BM25), lease-lock transactional writes, read-only governance, and trajectory review. DSH plugin host; Python stdlib + Markdown core. Zero database / vector service / external service dependencies.",
   "type": "module",
   "main": "./index.js",
   "exports": {

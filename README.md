@@ -2,7 +2,7 @@
 
 # dsh-memory-system — DSH 持久记忆基础设施
 
-> 一套给 DeepSeek Harness (DSH) Agent 用的本地优先记忆系统：启动热记忆注入、可解释冷召回、租约锁保护的事务写入、只读治理与轨迹复盘。纯 Python + Markdown 文件，无数据库、无向量服务、无外部服务依赖。
+> 一套给 DeepSeek Harness (DSH) Agent 用的本地优先记忆系统：启动热记忆注入、可解释冷召回、租约锁保护的事务写入、只读治理与轨迹复盘。**宿主为 DSH 插件（JS 包裹），核心逻辑基于 Python 标准库 + Markdown 文件；零数据库、零向量服务、零外部服务依赖。**
 
 **重要边界：本仓库只包含「机制」，不包含任何个人数据。** 记忆内容（画像、规则、事件、项目笔记）始终留在使用者本地——默认在 `~/.dsh-memory/`（无需 Obsidian），或通过 `MEMORY_VAULT` 环境变量指向自己的 Obsidian Vault。
 
@@ -25,7 +25,7 @@ Agent 会话之间默认是失忆的。本系统用 **六层机制** 把「记�
 | 中文召回 | 中文 bigram BM25 + exact/标题/路径匹配 + 元数据重排，全程可解释 trace |
 | 字节预算 | 热包 14KB / 冷包 4.2KB 硬预算，UTF-8 安全截断 |
 | 治理只读 | L0-L3 边界，自动收集证据、永不自动删改 |
-| 零依赖 | Python 标准库 + Markdown 文件，Windows/macOS/Linux 可跑（仅 backfill.py 历史回放需可选的 zstandard） |
+| 本地优先 | 零数据库 / 零向量服务 / 零外部服务依赖；Python 标准库 + Markdown（插件宿主 DSH，构建产物为 JS/TS 包裹） |
 
 ## 系统架构（六层闭环）
 
@@ -236,11 +236,32 @@ python vault-guard\recall.py --query "继续上次的XXX" --cwd "C:\path\to\proj
 ## 运行测试
 
 ```powershell
+# Python 引擎测试
 cd vault-guard
 python -m unittest discover -p "test_*.py" -v
+
+# JS 契约测试（工具参数 → CLI argv 映射，仓库根执行）
+node --test test_plugin_bridge.test.mjs
+# 或一次性跑全量（等价 CI）
+npm run check
 ```
 
 测试全部使用临时目录，不触碰真实记忆库。
+
+## 已知限制（预期管理）
+
+- **`memory_write` 默认是 dry-run（预览）**：不显式 `apply=true` 且经用户确认，**不落盘**。「Agent 说记下了」≠ 真写入了——需要时用 `memory_gate`/查看 events 文件确认。
+- **冷召回是 BM25 关键词检索，不是语义向量**：适合精确/近精确匹配（专有名词、代码、日期、明确主题），对同义改写、长尾表达、跨语言召回有限；向量检索默认关闭（零依赖代价）。
+- **单写者租约锁**：同一记忆库同一时刻只有一个写者，多 Agent 并发写会串行化（等锁）。不适合多 Agent 高频同时写同一个记忆库——多写者场景请拆分记忆库或错峰。
+- **项目隔离仅按 cwd 祖先匹配，无 git 分支感知**：同一目录的不同 git 分支共享同一记忆库，分支间的记忆会互相可见。分支级隔离在路线图中（见下）。
+- **热包按会话注入一次**：会话中途的「新增记忆」不会自动进当前会话热包，需要时显式调用 `memory_recall`/`memory_bootstrap` 刷新。
+- **轨迹复盘的定量维度依赖配套插件**：不装 `plugins/evidence-ledger/` 时只扫 session 日志中的用户纠正信号（定性），无工具账本数据。
+
+## 路线图
+
+- git 分支感知：记忆可绑定「仅在某分支生效」（对齐 dsh-memory-evolve 的分支隔离能力）
+- 语义召回作为可选通道（默认仍保持零依赖 BM25）
+- 多写者并发优化（当前单写者锁是正确性优先的设计取舍）
 
 ## 使用约定（方法论）
 

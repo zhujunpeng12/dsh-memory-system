@@ -2,7 +2,7 @@
 
 # dsh-memory-system — Persistent memory infrastructure for DeepSeek Harness
 
-> Local-first persistent memory for DeepSeek Harness (DSH) agents: bounded hot-memory bootstrap, explainable cold recall, lease-locked transactional writes, read-only governance, and trajectory review. Pure Python + Markdown. No database, no vector service, no external dependencies.
+> Local-first persistent memory for DeepSeek Harness (DSH) agents: bounded hot-memory bootstrap, explainable cold recall, lease-locked transactional writes, read-only governance, and trajectory review. **Hosted as a DSH plugin (JS wrapper); core logic on Python stdlib + Markdown. Zero database, zero vector service, zero external service dependencies.**
 
 **Important boundary: this repository contains only the mechanism, never any personal data.** Memory content (profile, rules, events, project notes) always stays on the user's machine — by default in `~/.dsh-memory/` (no Obsidian required), or in your own Obsidian Vault when `MEMORY_VAULT` points there.
 
@@ -25,7 +25,7 @@ Agent sessions are amnesic by default. This system turns "memory" into an engine
 | Chinese recall | Bigram BM25 + exact/title/path match + metadata rerank, fully explainable trace |
 | Byte budgets | 14KB hot / 4.2KB cold hard budgets, UTF-8-safe clipping |
 | Read-only governance | L0-L3 boundaries; collects evidence, never auto-deletes |
-| Zero dependencies | Python stdlib + Markdown; Windows/macOS/Linux |
+| Local-first | Zero database / vector service / external service; Python stdlib + Markdown (DSH plugin host, JS/TS wrapper build) |
 
 ## System architecture (six-layer closed loop)
 
@@ -217,12 +217,31 @@ python vault-guard/recall.py --query "continue the previous X" --cwd /path/to/pr
 ## Run tests
 
 ```bash
+# Python engine tests
 cd vault-guard && python -m unittest discover -p "test_*.py" -v
-# or from repo root:
+
+# JS contract tests (tool args → CLI argv mapping; run from repo root)
+node --test test_plugin_bridge.test.mjs
+# or everything at once (CI-equivalent):
 npm run check
 ```
 
 All tests use temporary directories; they never touch a real vault.
+
+## Known limitations (expectation management)
+
+- **`memory_write` is dry-run by default**: nothing is written unless `apply=true` is explicitly set and the user confirms. "The agent said it remembered" does not mean it was persisted — verify with `memory_gate` or by checking the events files.
+- **Cold recall is BM25 keyword retrieval, not semantic vectors**: best for exact/near-exact matches (proper nouns, code, dates, concrete topics); weak on paraphrases, long-tail phrasing, and cross-language recall. Vector retrieval is off by default (the cost of zero dependencies).
+- **Single-writer lease lock**: only one writer at a time per memory vault; concurrent multi-agent writes serialize (queue for the lock). Not suited for many agents writing the same vault at high frequency — split vaults or stagger writes.
+- **Project isolation is cwd-ancestor matching only, no git-branch awareness**: different git branches of the same directory share the same memory; branch-specific memory is not separated. Branch-level isolation is on the roadmap (below).
+- **Hot packet is injected once per session**: mid-session memory writes do not auto-refresh the current session's packet; call `memory_recall` / `memory_bootstrap` explicitly when needed.
+- **The quantitative dimension of trajectory review depends on the companion plugin**: without `plugins/evidence-ledger/`, the review scans session logs for user-correction signals (qualitative) only — no tool-ledger data.
+
+## Roadmap
+
+- Git-branch awareness: memory bound to "only effective on a given branch" (aligning with dsh-memory-evolve's branch isolation)
+- Semantic recall as an optional channel (keeping zero-dependency BM25 as default)
+- Multi-writer concurrency improvements (the single-writer lock is a correctness-first design choice today)
 
 ## Methodology (the philosophy)
 
