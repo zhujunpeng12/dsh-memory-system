@@ -25,3 +25,6 @@ sessions/
 Thumbs.db
 .idea/
 .vscode/
+
+# 本地安装产物（profile file: 依赖源）
+*.tgz
