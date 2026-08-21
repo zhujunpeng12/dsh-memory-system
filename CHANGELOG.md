@@ -12,6 +12,7 @@
 - GitHub Actions CI:Python 测试 + JS 语法 + gitleaks 密钥扫描
 - DSH manifest/源码/发布包独立安装一致性回归，阻断 scoped 包名、服务注入、自依赖、打包遗漏和宿主包静态导入漂移
 - 首屏 30 秒安装、兼容矩阵、选型边界和安装故障排查
+- V3 架构流程图与可维护 HTML/CSS 图源：原生 bundle、6 工具、混合冷召回、可恢复写入和人机治理闭环
 
 ### Fixed
 - GitHub/pnpm 安装后 loader 仍按裸名 `dsh-memory-system` 查包，导致 `ERR_MODULE_NOT_FOUND`

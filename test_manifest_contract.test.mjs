@@ -74,3 +74,16 @@ test('README puts a runnable install path near the top', () => {
     assert.match(first120, /npx @deepseek-ai\/dsh plugin --profile web add/)
   }
 })
+
+test('architecture docs describe the native V3 plugin path', () => {
+  for (const file of ['README.md', 'README.en.md']) {
+    const source = read(file)
+    assert.doesNotMatch(source, /SessionStart Hook/)
+    assert.match(source, /agent\/pre-step/)
+    assert.match(source, /memory-system-flowchart\.html/)
+  }
+  const diagram = read('docs/memory-system-flowchart.html')
+  assert.match(diagram, /架构图[^<]*<span class="version">· V3/)
+  assert.match(diagram, /inject: tools \+ agents/)
+  assert.match(diagram, /memory_write · apply=true/)
+})

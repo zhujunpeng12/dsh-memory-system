@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DSH 记忆系统架构图 V3</title>
+  <style>
+    :root {
+      --ink: #241d36;
+      --muted: #6d6680;
+      --paper: #f8f7fc;
+      --white: #ffffff;
+      --purple: #7048c8;
+      --purple-soft: #eee8fb;
+      --green: #278566;
+      --green-soft: #e7f5ef;
+      --blue: #3d75c3;
+      --blue-soft: #eaf2fc;
+      --orange: #bd6823;
+      --orange-soft: #fff0e2;
+      --rose: #ae4960;
+      --rose-soft: #fae9ed;
+      --line: #ded9ea;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; width: 1800px; min-height: 3000px; background: var(--paper); }
+    body {
+      color: var(--ink);
+      font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .page {
+      width: 1800px;
+      height: 3000px;
+      padding: 62px 76px 44px;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 90% 5%, rgba(112,72,200,.08), transparent 300px),
+        linear-gradient(180deg, #faf9fd 0%, #f7f6fb 100%);
+    }
+
+    header { height: 205px; display: flex; justify-content: space-between; gap: 40px; }
+    h1 { margin: 0; font-size: 68px; line-height: 1.08; letter-spacing: -2px; }
+    .subtitle { margin-top: 14px; color: var(--muted); font-size: 27px; }
+    .version { color: var(--purple); }
+    .badges { display: flex; align-items: flex-start; gap: 12px; padding-top: 8px; flex-wrap: wrap; justify-content: flex-end; max-width: 650px; }
+    .badge { padding: 15px 24px; border-radius: 999px; color: #fff; background: var(--purple); font-size: 22px; font-weight: 800; white-space: nowrap; }
+    .badge.blue { background: var(--blue); }
+    .badge.green { background: var(--green); }
+    .legend { display: flex; gap: 32px; margin-top: 20px; color: var(--muted); font-size: 18px; font-weight: 700; }
+    .legend i { display: inline-block; width: 44px; margin-right: 10px; vertical-align: middle; border-top: 4px solid var(--purple); }
+    .legend i.dashed { border-top-style: dashed; border-color: var(--blue); }
+    .legend i.human { width: 18px; height: 18px; border: 2px solid var(--orange); background: var(--orange-soft); transform: rotate(45deg); }
+
+    .entry {
+      height: 250px;
+      border: 3px solid var(--purple);
+      border-radius: 30px;
+      background: var(--white);
+      padding: 26px 30px 22px;
+      position: relative;
+      box-shadow: 0 10px 28px rgba(57, 37, 91, .06);
+    }
+    .entry-title { text-align: center; color: var(--purple); font-size: 24px; font-weight: 900; margin-bottom: 16px; }
+    .entry-flow { display: grid; grid-template-columns: 1fr 64px 1.5fr 64px 2fr; align-items: stretch; }
+    .entry-box { border: 2px solid #cfc2ee; border-radius: 20px; padding: 18px 20px; text-align: center; background: #fbfaff; min-height: 110px; }
+    .entry-box strong { display: block; color: var(--purple); font-size: 25px; margin-bottom: 8px; }
+    .entry-box span { display: block; color: var(--muted); font-size: 18px; line-height: 1.45; }
+    .arrow { display: flex; align-items: center; justify-content: center; color: var(--purple); font-size: 48px; font-weight: 900; }
+    .tools { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 10px; }
+    .tool { border: 1px solid #cfc2ee; background: #f1ebfc; color: #523396; border-radius: 999px; padding: 6px 10px; font-family: Consolas, monospace; font-size: 14px; font-weight: 800; }
+    .compat-note { position: absolute; right: 28px; bottom: 12px; font-size: 15px; color: var(--muted); }
+
+    .section { position: relative; border: 3px solid; border-radius: 30px; padding: 56px 28px 26px; margin-top: 34px; background: var(--white); }
+    .section-tag { position: absolute; left: 28px; top: -27px; color: #fff; border-radius: 18px; padding: 10px 24px; font-size: 30px; line-height: 1.1; font-weight: 900; }
+    .section-note { position: absolute; right: 30px; top: 17px; color: var(--muted); font-size: 18px; font-weight: 700; }
+    .purple { border-color: var(--purple); background: var(--purple-soft); }
+    .purple .section-tag { background: var(--purple); }
+    .green { border-color: var(--green); background: var(--green-soft); }
+    .green .section-tag { background: var(--green); }
+    .blue { border-color: var(--blue); background: var(--blue-soft); }
+    .blue .section-tag { background: var(--blue); }
+    .orange { border-color: var(--orange); background: var(--orange-soft); }
+    .orange .section-tag { background: var(--orange); }
+    .rose { border-color: var(--rose); background: var(--rose-soft); }
+    .rose .section-tag { background: var(--rose); }
+
+    .hot { height: 438px; }
+    .hot-main { display: grid; grid-template-columns: 1fr 56px 1.35fr 56px 1fr; align-items: center; margin: 0 100px 22px; }
+    .node { background: var(--white); border: 2px solid; border-radius: 19px; min-height: 93px; padding: 14px 18px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .node strong { font-size: 23px; line-height: 1.25; }
+    .node small { margin-top: 6px; color: var(--muted); font-size: 17px; line-height: 1.35; }
+    .purple .node { border-color: #a88fe1; }
+    .green .node { border-color: #74bda5; }
+    .blue .node { border-color: #79a5df; }
+    .orange .node { border-color: #df9d68; }
+    .rose .node { border-color: #cf8898; }
+    .hot-components { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; }
+    .component { background: rgba(255,255,255,.76); border: 1.5px solid #c7b6ec; border-radius: 16px; padding: 15px 13px; text-align: center; min-height: 128px; }
+    .component strong { display: block; font-size: 20px; margin-bottom: 6px; }
+    .component span { color: var(--muted); font-size: 16px; line-height: 1.45; }
+
+    .duo { height: 442px; margin-top: 34px; display: grid; grid-template-columns: 1.02fr .98fr; gap: 26px; }
+    .duo .section { margin-top: 0; height: 442px; }
+    .mini-flow { display: grid; grid-template-columns: 1fr 44px 1fr 44px 1fr; align-items: center; margin-top: 10px; }
+    .mini-arrow { text-align: center; font-size: 38px; font-weight: 900; }
+    .green .mini-arrow { color: var(--green); }
+    .blue .mini-arrow { color: var(--blue); }
+    .callout { margin-top: 20px; padding: 16px 20px; border-radius: 16px; background: rgba(255,255,255,.78); font-size: 18px; line-height: 1.55; }
+    .callout strong { color: var(--ink); }
+    .blue .callout { border-left: 6px solid var(--blue); }
+    .green .callout { border-left: 6px solid var(--green); }
+
+    .decision { height: 164px; margin-top: 34px; display: grid; grid-template-columns: 1.1fr 100px .9fr .9fr; gap: 20px; align-items: center; }
+    .question { height: 118px; clip-path: polygon(10% 0, 90% 0, 100% 50%, 90% 100%, 10% 100%, 0 50%); background: #fff0e0; border: 0; color: #a9581e; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 25px; font-weight: 900; line-height: 1.4; }
+    .decision .branch { border: 2px solid var(--line); background: var(--white); border-radius: 20px; padding: 16px; text-align: center; min-height: 105px; display: flex; flex-direction: column; justify-content: center; }
+    .branch strong { font-size: 21px; }
+    .branch small { color: var(--muted); margin-top: 5px; font-size: 16px; }
+    .fork { color: var(--orange); display: flex; flex-direction: column; justify-content: center; gap: 14px; font-size: 21px; font-weight: 900; text-align: center; }
+
+    .write { height: 407px; }
+    .steps { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-top: 10px; }
+    .step { position: relative; border: 2px solid #dc9863; border-radius: 18px; background: rgba(255,255,255,.88); padding: 18px 12px; min-height: 210px; text-align: center; }
+    .step:not(:last-child)::after { content: "›"; position: absolute; right: -15px; top: 76px; z-index: 2; font-size: 40px; color: var(--orange); font-weight: 900; }
+    .step b { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; border-radius: 50%; margin: 0 auto 12px; color: #fff; background: var(--orange); font-size: 19px; }
+    .step strong { display: block; font-size: 20px; margin-bottom: 9px; }
+    .step span { color: var(--muted); font-size: 16px; line-height: 1.45; }
+    .write-foot { margin: 18px 70px 0; padding: 13px 20px; border-radius: 14px; background: #fff; border: 1.5px dashed #d69460; text-align: center; font-size: 17px; font-weight: 700; color: #7e4921; }
+
+    .governance { height: 422px; margin-top: 34px; display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+    .governance .section { margin-top: 0; height: 422px; }
+    .stack { display: grid; grid-template-columns: 1fr 44px 1fr 44px 1fr; align-items: stretch; margin-top: 6px; }
+    .stack .node { min-height: 206px; padding: 16px; }
+    .stack .node strong { font-size: 20px; }
+    .stack .node small { font-size: 15px; }
+    .rose .mini-arrow { color: var(--rose); }
+    .human-pill { margin-top: 15px; border-radius: 14px; padding: 12px 18px; text-align: center; background: rgba(255,255,255,.85); font-size: 16px; font-weight: 800; }
+
+    .feedback { height: 148px; margin-top: 34px; border: 3px solid var(--purple); border-radius: 28px; background: linear-gradient(90deg, #eee8fb, #e9f3fc); display: grid; grid-template-columns: 1.1fr 70px 1.5fr; align-items: center; padding: 18px 34px; }
+    .feedback strong { display: block; color: var(--purple); font-size: 27px; }
+    .feedback span { display: block; margin-top: 5px; color: var(--muted); font-size: 18px; line-height: 1.4; }
+    .feedback .arrow { font-size: 52px; }
+    .feedback-target { border-radius: 18px; background: var(--purple); color: #fff; padding: 18px 26px; text-align: center; font-size: 21px; font-weight: 800; }
+
+    footer { height: 100px; display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 20px; }
+    footer strong { color: var(--ink); }
+    .foot-meta { font-family: Consolas, monospace; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div>
+        <h1>DSH 记忆系统架构图 <span class="version">· V3</span></h1>
+        <div class="subtitle">原生插件加载 · 有界热记忆 · 可解释冷召回 · 可恢复授权写入 · 人机协同治理</div>
+        <div class="legend">
+          <span><i></i>机械执行</span>
+          <span><i class="dashed"></i>按需检索 / 证据返回</span>
+          <span><i class="human"></i>人工授权与判断</span>
+        </div>
+      </div>
+      <div class="badges">
+        <span class="badge">HOT ≤ 14KB</span>
+        <span class="badge blue">COLD ≤ 4.2KB</span>
+        <span class="badge green">0 DB · 0 VECTOR</span>
+      </div>
+    </header>
+
+    <section class="entry">
+      <div class="entry-title">原生 DSH Bundle 入口 · 每个 root agent 独立注册</div>
+      <div class="entry-flow">
+        <div class="entry-box"><strong>新会话 / 新任务</strong><span>DSH 0.1.0-rc.7<br>工作目录来自 session header</span></div>
+        <div class="arrow">→</div>
+        <div class="entry-box"><strong>@zhujunpeng12/dsh-memory-system</strong><span>scoped loader name<br>inject: tools + agents</span></div>
+        <div class="arrow">→</div>
+        <div class="entry-box"><strong>6 个 Agent 工具</strong><span>按 agent 生命周期挂载与清理</span><div class="tools"><em class="tool">bootstrap</em><em class="tool">recall</em><em class="tool">gate</em><em class="tool">govern</em><em class="tool">trajectory</em><em class="tool">write</em></div></div>
+      </div>
+      <div class="compat-note">手动 hooks 仅用于 standalone 兼容模式，不是插件主路径</div>
+    </section>
+
+    <section class="section purple hot">
+      <div class="section-tag">① 原生启动热记忆</div>
+      <div class="section-note">每个 session 首轮一次 · 失败即放行，不阻断对话</div>
+      <div class="hot-main">
+        <div class="node"><strong>agent/pre-step</strong><small>session id 去重<br>自动触发，无需 hooks</small></div>
+        <div class="arrow">→</div>
+        <div class="node"><strong>bootstrap.py</strong><small>按段独立预算 · UTF-8 安全截断<br>只读扫描本地 Markdown</small></div>
+        <div class="arrow">→</div>
+        <div class="node"><strong>[vault-bootstrap]</strong><small>一次合并注入<br>总预算 ≤14KB</small></div>
+      </div>
+      <div class="hot-components">
+        <div class="component"><strong>机械门禁</strong><span>raw 缺口 · 写锁<br>事务状态 · core 同步</span></div>
+        <div class="component"><strong>指令预算</strong><span>8KB / 32KB / 48KB<br>软预警，不整段丢弃</span></div>
+        <div class="component"><strong>用户画像</strong><span>稳定偏好完整注入<br>不绑定单一项目</span></div>
+        <div class="component"><strong>活跃规则</strong><span>核心标记 + 引用次数<br>按预算筛选</span></div>
+        <div class="component"><strong>项目与事件</strong><span>cwd 匹配项目<br>最近 3 个有效事件日</span></div>
+      </div>
+    </section>
+
+    <div class="duo">
+      <section class="section green">
+        <div class="section-tag">② 工作路径</div>
+        <div class="section-note">规则驱动，不是全库常驻</div>
+        <div class="mini-flow">
+          <div class="node"><strong>AGENTS 内核</strong><small>优先级 · 权限边界<br>明确写入门槛</small></div>
+          <div class="mini-arrow">→</div>
+          <div class="node"><strong>Skill 路由</strong><small>点名 → 速查表<br>→ 图谱兜底</small></div>
+          <div class="mini-arrow">→</div>
+          <div class="node"><strong>执行与验证</strong><small>最小修改 · 根因<br>真实运行 / UI 证据</small></div>
+        </div>
+        <div class="callout"><strong>热包负责“先知道什么”</strong>；工作路径负责“怎么做”。需要历史细节时才调用冷召回，不把完整 Vault 塞进上下文。</div>
+      </section>
+
+      <section class="section blue">
+        <div class="section-tag">③ 冷层按需召回</div>
+        <div class="section-note">memory_recall · 只读</div>
+        <div class="mini-flow">
+          <div class="node"><strong>具体主题</strong><small>历史 / 纠正信号<br>或显式工具调用</small></div>
+          <div class="mini-arrow">→</div>
+          <div class="node"><strong>混合词法召回</strong><small>exact + 中文 bigram BM25<br>标题 / 路径匹配</small></div>
+          <div class="mini-arrow">→</div>
+          <div class="node"><strong>有界冷包</strong><small>元数据重排 · 去重<br>单文件配额 · ≤4.2KB</small></div>
+        </div>
+        <div class="callout"><strong>证据可解释：</strong>输出来源路径、命中原因与 trace；raw 默认不参与，只有明确请求时才纳入。</div>
+      </section>
+    </div>
+
+    <section class="decision">
+      <div class="question">有持久价值<br>且用户明确同意归档？</div>
+      <div class="fork"><span>否 ↗</span><span>是 ↘</span></div>
+      <div class="branch"><strong>普通收尾</strong><small>不自动写 Vault<br>memory_gate(closing=true)</small></div>
+      <div class="branch"><strong>进入授权链</strong><small>先 dry-run 预览<br>tools/pre-execute 再确认</small></div>
+    </section>
+
+    <section class="section orange write">
+      <div class="section-tag">④ 授权写入事务</div>
+      <div class="section-note">memory_write · apply=true 才落盘</div>
+      <div class="steps">
+        <div class="step"><b>1</b><strong>预览计划</strong><span>默认 dry-run<br>明确目标、内容与操作</span></div>
+        <div class="step"><b>2</b><strong>用户确认</strong><span>原生审批门禁<br>没有“好的”即授权</span></div>
+        <div class="step"><b>3</b><strong>租约单写锁</strong><span>30s 租约<br>5s 心跳 · 等待/陈旧恢复</span></div>
+        <div class="step"><b>4</b><strong>锁内重读</strong><span>SHA-256 前置<br>before-image + manifest</span></div>
+        <div class="step"><b>5</b><strong>安全写入</strong><span>raw 只准 EOF append<br>纠错用 supersedes</span></div>
+        <div class="step"><b>6</b><strong>验证与回执</strong><span>结构/引用校验 · receipt<br>失败回滚 · 下次 recover</span></div>
+      </div>
+      <div class="write-foot">release 在所有路径执行；历史 raw 不原地改写，replace 仅用于非 raw 文件，多文件变更可恢复。</div>
+    </section>
+
+    <div class="governance">
+      <section class="section blue">
+        <div class="section-tag">⑤ 慢维护与治理</div>
+        <div class="section-note">只收集候选，不自动删改</div>
+        <div class="stack">
+          <div class="node"><strong>memory_gate</strong><small>raw 缺口 · 体量<br>锁/事务 · rules-core 同步</small></div>
+          <div class="mini-arrow">→</div>
+          <div class="node"><strong>memory_govern</strong><small>重复 · 冲突 · 过期<br>超长 · 生命周期候选</small></div>
+          <div class="mini-arrow">→</div>
+          <div class="node"><strong>人工治理</strong><small>毕业 · 仲裁 · 归档<br>删除需明确确认</small></div>
+        </div>
+        <div class="human-pill">衰减只影响排序与候选，不自动判定记忆为假。</div>
+      </section>
+
+      <section class="section rose">
+        <div class="section-tag">⑥ 轨迹复盘反馈闭环</div>
+        <div class="section-note">memory_trajectory_review · 只读</div>
+        <div class="stack">
+          <div class="node"><strong>证据输入</strong><small>用户纠正 = 硬信号<br>session 日志 + 工具账本</small></div>
+          <div class="mini-arrow">→</div>
+          <div class="node"><strong>四字段候选</strong><small>场景 → 错误 → 根因<br>→ 先决动作</small></div>
+          <div class="mini-arrow">→</div>
+          <div class="node"><strong>人工核验</strong><small>普通探索不沉淀<br>批准后 events / rules</small></div>
+        </div>
+        <div class="human-pill">重复 ≥3 次的稳定模式才可毕业；工具错误账本只作线索。</div>
+      </section>
+    </div>
+
+    <section class="feedback">
+      <div><strong>批准后的知识回灌</strong><span>events · rules · 项目摘要 · 用户画像，保留结论与证据指针</span></div>
+      <div class="arrow">↻</div>
+      <div class="feedback-target">下一次 session → bootstrap 重新按预算选取 → 持续生效</div>
+    </section>
+
+    <footer>
+      <div><strong>核心原则：</strong>自动化负责采集、检索、校验和恢复；判断、授权与语义治理仍由人机协作完成。</div>
+      <div class="foot-meta">dsh-memory-system 0.1.1 · DSH rc.7</div>
+    </footer>
+  </main>
+</body>
+</html>

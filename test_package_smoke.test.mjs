@@ -39,6 +39,7 @@ test('packed artifact installs and imports in an empty project', () => {
       'pack', '--json', '--pack-destination', packDir,
     ], { cwd: import.meta.dirname, encoding: 'utf8' }))
     assert.equal(packed.length, 1)
+    assert.ok(packed[0].files.some(file => file.path === 'docs/memory-system-flowchart.html'))
     const tarball = join(packDir, packed[0].filename)
 
     writeFileSync(join(consumerDir, 'package.json'), JSON.stringify({

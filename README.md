@@ -83,42 +83,66 @@ Agent 会话之间默认是失忆的。本系统用 **六层机制** 把「记�
 
 ![DSH 记忆系统流程图](docs/memory-system-flowchart.png)
 
+可维护图源：[HTML/CSS V3 源图](docs/memory-system-flowchart.html)。
+
 <details>
-<summary>展开查看可编辑的 Mermaid 源码图</summary>
+<summary>展开查看可编辑的 Mermaid 源码图（与 V3 PNG 同步）</summary>
 
 ```mermaid
 flowchart TD
-    Start([新会话 / 新任务]) --> Hook[SessionStart Hook<br/>解析 JSON 与 cwd · UTF-8 兼容]
+    Start([新会话 / 新任务]) --> Bundle["@zhujunpeng12/dsh-memory-system<br/>scoped bundle · inject tools + agents"]
+    Bundle --> Roots[每个 root agent 注册 6 工具<br/>bootstrap · recall · gate · govern · trajectory · write]
 
-    Hook -->|实线:脚本机械执行| B1[① 启动热记忆<br/>bootstrap.py · 有界上下文 ≤14KB]
-    B1 --> B1a[机械门禁<br/>缺口 · 锁 · 同步]
-    B1 --> B1b[指令预算<br/>8KB/32KB/48KB 软预警]
-    B1 --> B1c[用户画像<br/>完整注入 · 不绑定项目]
-    B1 --> B1d[活跃规则<br/>核心标记 + 引用次数 · 按预算筛选]
-    B1 --> B1e[项目摘要<br/>cwd 祖先匹配 Vault]
-    B1 --> B1f[最近事件日<br/>14 天回溯 · 只取主标题 · 单条 ≤180B]
-    B1f -->|合并一次注入| B1out["[vault-bootstrap] 热包"]
+    subgraph L1[① 原生启动热记忆]
+      Roots --> Pre[agent/pre-step 首轮 · session id 去重]
+      Pre --> Boot[bootstrap.py<br/>分段预算 · UTF-8 安全截断 · 失败放行]
+      Boot --> Hot["[vault-bootstrap] · 一次注入 ≤14KB"]
+      Boot --> HotParts[门禁 · 指令预算 · 用户画像<br/>活跃规则 · cwd 项目 · 最近 3 个有效事件日]
+    end
 
-    B1out --> B2[② 工作路径<br/>AGENTS 内核 · Skill 路由 · 最小修改]
-    B2 --> B2out[验证后交付<br/>语法/配置/真实运行/界面证据]
+    subgraph L2[② 工作路径]
+      Hot --> Work[AGENTS 内核 → Skill 路由 → 最小修改/根因调查]
+      Work --> Deliver[验证后交付<br/>语法 · 配置 · 真实运行 · UI 证据]
+    end
 
-    B2 -.需要细节时按需读取.-> B3[③ 冷层按需读取<br/>完整 rules · 历史 events/raw · 项目笔记 · 月度索引 · session 日志]
+    subgraph L3[③ 冷层按需召回]
+      Work -.历史/纠正信号 + 具体主题.-> Recall[exact + 中文 bigram BM25<br/>标题/路径匹配]
+      Recall --> Rerank[元数据重排 · 去重 · 单文件配额]
+      Rerank --> Cold[带来源与 trace 的冷包 ≤4.2KB]
+      Cold -.证据返回.-> Work
+    end
 
-    B3 --> Q1{有持久价值且<br/>用户同意归档?}
-    Q1 -->|否| Q1no[普通收尾 · 不自动写 Vault<br/>session/disposed → check --closing]
-    Q1 -->|是| B4[④ 授权写入事务<br/>拿锁 vault-lock · 写 raw 只记事实<br/>提炼归位 events/项目/rules · 释放锁]
-    B4 --> B4out[授权门禁<br/>check --closing --expect-write]
+    Deliver --> Decision{有持久价值且<br/>用户明确同意归档?}
+    Decision -->|否| Close[普通收尾 · 不自动写 Vault<br/>memory_gate closing=true]
 
-    B4out --> B5[⑤ 慢维护<br/>机械体检 raw 缺口/体量/core 同步<br/>人工治理 毕业/仲裁/过期/删除确认]
+    subgraph L4[④ 授权写入事务]
+      Decision -->|是| Preview[memory_write dry-run 预览]
+      Preview --> Approve[tools/pre-execute 人工确认]
+      Approve --> Lock[30s 租约单写锁 · 5s 心跳]
+      Lock --> Tx[锁内重读 · SHA 前置 · before-image/manifest]
+      Tx --> SafeWrite[raw EOF append / 非 raw replace]
+      SafeWrite --> Receipt[校验 · receipt · release<br/>失败回滚 / 下次 recover]
+    end
 
-    B2 -.会话轨迹.-> B6[⑥ 轨迹复盘反馈闭环<br/>trajectory-review.py 只读候选]
-    B6 --> B6a[证据层<br/>用户纠正=硬信号 · session 日志 · 工具账本只作线索]
-    B6a --> B6b{人工核验<br/>场景→错误→根因→先决动作}
-    B6b -->|重复 ≥3 次| B6c[规则回灌<br/>毕业进 rules-core]
-    B6b -->|普通探索失败| B6d[不沉淀]
-    B6b -->|授权沉淀| B6e[raw → events<br/>保留结论与证据指针]
-    B6c --> B1
-    B6e --> B1
+    subgraph L5[⑤ 慢维护与治理]
+      Receipt --> Gate[memory_gate 机械体检]
+      Gate --> Govern[memory_govern 只读候选<br/>重复/冲突/过期/体量/生命周期]
+      Govern --> Human[人工毕业 · 仲裁 · 归档 · 删除确认]
+    end
+
+    subgraph L6[⑥ 轨迹复盘反馈闭环]
+      Work -.session 轨迹.-> Evidence[用户纠正=硬信号<br/>session 日志 + 工具账本只作线索]
+      Evidence --> Review[memory_trajectory_review<br/>场景 → 错误 → 根因 → 先决动作]
+      Review --> Verify{人工核验}
+      Verify -->|普通探索| Skip[不沉淀]
+      Verify -->|批准| Distill[events / rules<br/>保留结论与证据指针]
+      Verify -->|重复 ≥3 次| Graduate[毕业进 rules-core]
+    end
+
+    Human --> Distill
+    Distill --> Next[下一次 session 重新按预算选取]
+    Graduate --> Next
+    Next --> Pre
 ```
 
 图例:实线 = 脚本机械执行;虚线 = 按需读取 / 人工核验;菱形 = 用户授权判断。反馈闭环:轨迹复盘产出的规则与事件,回灌到下一次会话的热记忆。
@@ -133,7 +157,7 @@ flowchart TD
 
 **包含**：机械门禁状态（缺口/锁/同步）、指令预算审计、用户画像、活跃核心规则（按 ⭐ 与引用计数筛选）、当前项目摘要（按 cwd 祖先匹配）、最近事件主标题（14 天回溯、单条 ≤180B）。
 
-**怎么用**：`memory_bootstrap` 工具，或 `python vault-guard/bootstrap.py --cwd <项目目录> --max-bytes 14000`。接入 hooks 后每次新会话自动执行。
+**怎么用**：`memory_bootstrap` 工具，或 `python vault-guard/bootstrap.py --cwd <项目目录> --max-bytes 14000`。推荐插件形态通过原生 `agent/pre-step` 在每个 session 首轮自动执行；手动 hooks 仅用于 standalone 兼容模式。
 
 ### ② 工作路径 — 按规则执行任务（方法论层，无脚本）
 

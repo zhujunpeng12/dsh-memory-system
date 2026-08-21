@@ -83,42 +83,66 @@ Agent sessions are amnesic by default. This system turns "memory" into an engine
 
 ![DSH memory system flowchart](docs/memory-system-flowchart.png)
 
+Maintainable source: [HTML/CSS V3 diagram](docs/memory-system-flowchart.html).
+
 <details>
-<summary>Expand for editable Mermaid source diagram</summary>
+<summary>Expand for the editable Mermaid diagram synchronized with V3</summary>
 
 ```mermaid
 flowchart TD
-    Start([New session / task]) --> Hook[SessionStart Hook<br/>parse JSON + cwd · UTF-8 safe]
+    Start([New session / task]) --> Bundle["@zhujunpeng12/dsh-memory-system<br/>scoped bundle · inject tools + agents"]
+    Bundle --> Roots[Register 6 tools per root agent<br/>bootstrap · recall · gate · govern · trajectory · write]
 
-    Hook -->|solid: script execution| B1[① Hot-memory bootstrap<br/>bootstrap.py · bounded ≤14KB]
-    B1 --> B1a[Mechanical gate<br/>gaps · lock · sync]
-    B1 --> B1b[Instruction budget<br/>8KB/32KB/48KB soft warning]
-    B1 --> B1c[User profile<br/>full inject · not project-bound]
-    B1 --> B1d[Active rules<br/>star + citation count · budget-filtered]
-    B1 --> B1e[Project summary<br/>cwd ancestor matches vault]
-    B1 --> B1f[Recent event days<br/>14-day lookback · headings only · ≤180B each]
-    B1f -->|single merged inject| B1out["[vault-bootstrap] packet"]
+    subgraph L1[① Native hot-memory startup]
+      Roots --> Pre[First agent/pre-step · session-id dedupe]
+      Pre --> Boot[bootstrap.py<br/>section budgets · UTF-8-safe clipping · fail-open]
+      Boot --> Hot["[vault-bootstrap] · one inject ≤14KB"]
+      Boot --> HotParts[gate · instruction budget · user profile<br/>active rules · cwd project · 3 recent active event days]
+    end
 
-    B1out --> B2[② Working path<br/>AGENTS core · skill routing · minimal edits]
-    B2 --> B2out[Verified delivery<br/>syntax/config/real-run/UI evidence]
+    subgraph L2[② Working path]
+      Hot --> Work[AGENTS core → skill routing → minimal/root-cause work]
+      Work --> Deliver[Verified delivery<br/>syntax · config · real run · UI evidence]
+    end
 
-    B2 -.on-demand read.-> B3[③ Cold layer on demand<br/>full rules · historical events/raw · project notes · monthly index · session logs]
+    subgraph L3[③ On-demand cold recall]
+      Work -.history/correction signal + concrete topic.-> Recall[exact + Chinese bigram BM25<br/>title/path match]
+      Recall --> Rerank[metadata rerank · dedupe · per-file quota]
+      Rerank --> Cold[source-cited packet + trace ≤4.2KB]
+      Cold -.evidence back.-> Work
+    end
 
-    B3 --> Q1{Persistent value and<br/>user approves archive?}
-    Q1 -->|no| Q1no[Plain closing · no auto write<br/>session/disposed → check --closing]
-    Q1 -->|yes| B4[④ Authorized write transaction<br/>acquire lock · append raw facts only<br/>distill to events/projects/rules · release]
-    B4 --> B4out[Authorization gate<br/>check --closing --expect-write]
+    Deliver --> Decision{Persistent value and<br/>explicit archive approval?}
+    Decision -->|no| Close[Plain closing · no auto write<br/>memory_gate closing=true]
 
-    B4out --> B5[⑤ Slow maintenance<br/>mechanical health: gaps/size/core sync<br/>human governance: promote/arbitrate/expire/delete]
+    subgraph L4[④ Authorized write transaction]
+      Decision -->|yes| Preview[memory_write dry-run preview]
+      Preview --> Approve[tools/pre-execute human approval]
+      Approve --> Lock[30s single-writer lease · 5s heartbeat]
+      Lock --> Tx[lock-scoped reread · SHA precondition<br/>before-image + manifest]
+      Tx --> SafeWrite[raw EOF append / non-raw replace]
+      SafeWrite --> Receipt[validate · receipt · release<br/>rollback / recover on next writer]
+    end
 
-    B2 -.session trace.-> B6[⑥ Trajectory review loop<br/>trajectory-review.py read-only candidates]
-    B6 --> B6a[Evidence layer<br/>user correction = hard signal · tool ledger as clue only]
-    B6a --> B6b{Human review<br/>scenario → error → root cause → precondition}
-    B6b -->|repeats ≥3 times| B6c[Rule backfill<br/>graduate into rules-core]
-    B6b -->|ordinary exploration failure| B6d[No distillation]
-    B6b -->|approved distillation| B6e[raw → events<br/>keep conclusion + evidence pointer]
-    B6c --> B1
-    B6e --> B1
+    subgraph L5[⑤ Slow maintenance and governance]
+      Receipt --> Gate[memory_gate mechanical health]
+      Gate --> Govern[memory_govern read-only candidates<br/>duplicate/conflict/stale/size/lifecycle]
+      Govern --> Human[human promotion · arbitration · archive · delete approval]
+    end
+
+    subgraph L6[⑥ Trajectory-review feedback loop]
+      Work -.session trace.-> Evidence[user correction = hard signal<br/>session log + tool ledger as clues]
+      Evidence --> Review[memory_trajectory_review<br/>scenario → error → root cause → precondition]
+      Review --> Verify{Human verification}
+      Verify -->|ordinary exploration| Skip[No distillation]
+      Verify -->|approved| Distill[events / rules<br/>keep conclusion + evidence pointer]
+      Verify -->|stable pattern ≥3x| Graduate[graduate into rules-core]
+    end
+
+    Human --> Distill
+    Distill --> Next[next session reselects under byte budgets]
+    Graduate --> Next
+    Next --> Pre
 ```
 
 Legend: solid = scripted execution; dashed = on-demand read / human review; diamond = user authorization decision. The feedback loop distills rules and events back into the next session's hot memory.
@@ -162,7 +186,7 @@ Restart the Harness. The agent gains 6 tools, and **every new session gets the h
 
 **Contents**: mechanical gate status (gaps/lock/sync), instruction-budget audit, user profile, active core rules (star + citation filtered), current project summary (cwd-ancestor match), recent event headings (14-day lookback, ≤180B each).
 
-**How**: `memory_bootstrap` tool, or `python vault-guard/bootstrap.py --cwd <dir> --max-bytes 14000`. Automatic via hooks.
+**How**: `memory_bootstrap` tool, or `python vault-guard/bootstrap.py --cwd <dir> --max-bytes 14000`. The recommended plugin uses native `agent/pre-step` on the first turn of every session; manual hooks are only for standalone compatibility.
 
 ### ② Working path — rules-driven execution (methodology, no script)
 
