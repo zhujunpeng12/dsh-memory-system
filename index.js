@@ -20,16 +20,15 @@
 // not hot-reloaded).
 
 import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { writeFileSync, rmSync, mkdtempSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { defineTool } from '@deepseek-ai/dsh-tools'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { buildToolInvocation, TMPFILE_MARKER } from './bridge.js'
 
 export const name = 'dsh-memory-system'
-export const inject = ['tools']
+export const inject = ['tools', 'agents']
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const GUARD = join(HERE, 'vault-guard')
@@ -41,8 +40,70 @@ const RUN_TIMEOUT_MS = 60_000
 const MUTATING_TOOLS = new Set(['memory_write'])
 
 const JSON_OUTPUT = {
-  schema: { type: 'json' },
+  // Raw ToolDefinition JSON Schema: an empty schema accepts any JSON value.
+  schema: {},
   render(_args, value) { return [{ type: 'text', text: JSON.stringify(value) }] },
+}
+
+// Keep the published plugin import-free. DSH loads a bundle from the profile's
+// node_modules, where host packages are not guaranteed to be ESM-resolvable
+// from a third-party plugin. This tiny compiler turns the author-friendly
+// property map used below into the raw ToolDefinition schema accepted by
+// ctx.tools.register(), while preserving defineTool's execution-time argument
+// checks without importing a host package by path.
+function defineTool(options) {
+  const { parameters, execute, ...definition } = options
+  const properties = {}
+  const required = []
+  for (const [key, spec] of Object.entries(parameters)) {
+    const { required: isRequired, ...schema } = spec
+    properties[key] = schema
+    if (isRequired === true) required.push(key)
+  }
+  return {
+    ...definition,
+    parameters: {
+      type: 'object',
+      properties,
+      ...(required.length > 0 ? { required } : {}),
+      additionalProperties: false,
+    },
+    async execute(args, exec) {
+      validateToolArgs(options.name, properties, required, args)
+      return execute(args, exec)
+    },
+  }
+}
+
+function validateToolArgs(name, properties, required, args) {
+  if (args === null || typeof args !== 'object' || Array.isArray(args)) {
+    throw new TypeError(`${name}: arguments must be an object`)
+  }
+  for (const key of required) {
+    if (!Object.hasOwn(args, key)) throw new TypeError(`${name}: missing required argument ${key}`)
+  }
+  for (const [key, value] of Object.entries(args)) {
+    const schema = properties[key]
+    if (schema === undefined) throw new TypeError(`${name}: unknown argument ${key}`)
+    const validType = schema.type === 'integer'
+      ? Number.isInteger(value)
+      : schema.type === 'number'
+        ? typeof value === 'number' && Number.isFinite(value)
+        : typeof value === schema.type
+    if (!validType) throw new TypeError(`${name}: argument ${key} must be ${schema.type}`)
+    if (schema.enum !== undefined && !schema.enum.includes(value)) {
+      throw new TypeError(`${name}: argument ${key} must be one of ${schema.enum.join(', ')}`)
+    }
+  }
+}
+
+function createPluginUserMessage(text, source) {
+  return Object.freeze({
+    id: randomUUID(),
+    role: 'user',
+    content: Object.freeze([Object.freeze({ type: 'text', text })]),
+    source,
+  })
 }
 
 function json(value) {
@@ -312,7 +373,7 @@ export function apply(ctx) {
   // DSH_MEMORY_AUTO_INJECT=false 可关闭。
   // 与 dsh-hooks-claude-code 的 UserPromptSubmit 映射到 agent/pre-step 同一机制，
   // 但原生实现，不依赖任何 hooks 配置。
-  const PLUGIN_SOURCE = { kind: 'plugin', plugin: 'dsh-memory-system' }
+  const PLUGIN_SOURCE = Object.freeze({ kind: 'plugin', plugin: 'dsh-memory-system' })
   const injectedSessions = new Set() // sessionId -> injected
   const AUTO_INJECT = process.env.DSH_MEMORY_AUTO_INJECT !== 'false'
   ctx.on('agent/pre-step', async ({ agent, messages, turn, signal }, next) => {
@@ -326,10 +387,7 @@ export function apply(ctx) {
       if (run.ok && run.stdout.trim()) {
         injectedSessions.add(sid)
         if (injectedSessions.size > 2000) injectedSessions.clear() // 安全阀
-        const ours = createUserMessage({
-          content: [{ type: 'text', text: run.stdout.trim() }],
-          source: PLUGIN_SOURCE,
-        })
+        const ours = createPluginUserMessage(run.stdout.trim(), PLUGIN_SOURCE)
         const downstream = await next()
         if (downstream.kind !== 'enter') return downstream
         return { kind: 'enter', messages: [...downstream.messages, ours] }

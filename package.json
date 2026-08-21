@@ -1,6 +1,6 @@
 {
   "name": "@zhujunpeng12/dsh-memory-system",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Local-first persistent memory infrastructure for DeepSeek Harness: bounded hot-memory bootstrap, explainable cold recall (exact + Chinese BM25), lease-lock transactional writes, read-only governance, and trajectory review. DSH plugin host; Python stdlib + Markdown core. Zero database / vector service / external service dependencies.",
   "type": "module",
   "main": "./index.js",
@@ -37,7 +37,7 @@
     "!plugins/agent-teams/node_modules/",
     "templates/",
     "docs/",
-    "assets/banner.png",
+    "assets/banner.jpg",
     "README.md",
     "README.en.md",
     "LICENSE"
@@ -47,16 +47,8 @@
       "patch": "./cordis.patch.yml"
     }
   },
-  "peerDependencies": {
-    "@deepseek-ai/dsh-tools": "*"
-  },
-  "peerDependenciesMeta": {
-    "@deepseek-ai/dsh-tools": {
-      "optional": true
-    }
-  },
   "scripts": {
-    "check": "node --check index.js && node --check bridge.js && node --test test_plugin_bridge.test.mjs && python -c \"import glob,py_compile; [py_compile.compile(f, doraise=True) for f in glob.glob('vault-guard/*.py')+glob.glob('plugins/evidence-ledger/*.py')]\" && python -m unittest discover -s vault-guard -p \"test_*.py\""
+    "check": "node --check index.js && node --check bridge.js && node --test test_*.test.mjs && python -c \"import glob,py_compile; [py_compile.compile(f, doraise=True) for f in glob.glob('vault-guard/*.py')+glob.glob('plugins/evidence-ledger/*.py')]\" && python -m unittest discover -s vault-guard -p \"test_*.py\""
   },
   "keywords": [
     "deepseek-harness",
@@ -68,8 +60,5 @@
     "local-first",
     "obsidian"
   ],
-  "license": "MIT",
-  "dependencies": {
-    "@zhujunpeng12/dsh-memory-system": "^0.1.0"
-  }
+  "license": "MIT"
 }

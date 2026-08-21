@@ -1,10 +1,62 @@
-![banner](./assets/banner.png)
+<p align="center">
+  <img src="./assets/banner.jpg" alt="DSH Memory System" width="100%">
+</p>
 
-# dsh-memory-system — Persistent memory infrastructure for DeepSeek Harness
+<div align="center">
 
-> Local-first persistent memory for DeepSeek Harness (DSH) agents: bounded hot-memory bootstrap, explainable cold recall, lease-locked transactional writes, read-only governance, and trajectory review. **Hosted as a DSH plugin (JS wrapper); core logic on Python stdlib + Markdown. Zero database, zero vector service, zero external service dependencies.**
+# dsh-memory-system
 
-**Important boundary: this repository contains only the mechanism, never any personal data.** Memory content (profile, rules, events, project notes) always stays on the user's machine — by default in `~/.dsh-memory/` (no Obsidian required), or in your own Obsidian Vault when `MEMORY_VAULT` points there.
+**Give DeepSeek Harness cross-session memory while keeping every fact in local Markdown.**
+
+[![CI](https://github.com/zhujunpeng12/dsh-memory-system/actions/workflows/ci.yml/badge.svg)](https://github.com/zhujunpeng12/dsh-memory-system/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/%40zhujunpeng12%2Fdsh-memory-system?label=npm)](https://www.npmjs.com/package/@zhujunpeng12/dsh-memory-system)
+[![DSH](https://img.shields.io/badge/DSH-0.1.0--rc.7-4F46E5)](https://github.com/deepseek-ai/deepseek-harness)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-22C55E.svg)](LICENSE)
+
+[中文](README.md) · [How it works](#why) · [Safety boundaries](#known-limitations-expectation-management) · [Contributing](CONTRIBUTING.md)
+
+</div>
+
+This is not another opaque vector store. It injects a bounded hot packet at session start, opens historical details only through explainable Chinese-aware BM25 recall, and previews every write before a lease-locked recoverable transaction. The default store is `~/.dsh-memory/`; Obsidian, a database, vector service, and external APIs are all optional—not requirements.
+
+> **Privacy boundary:** this repository ships mechanisms, never personal data. Profiles, rules, events, and project notes remain on your machine. Set `MEMORY_VAULT` only when you want to use your own Obsidian Vault.
+
+## Install in 30 seconds
+
+Prerequisites: DeepSeek Harness `0.1.0-rc.7`, Node.js 22/24, and Python 3.10+.
+
+```bash
+npx @deepseek-ai/dsh plugin --profile web add github:zhujunpeng12/dsh-memory-system
+```
+
+Restart Harness, then ask the agent to run `memory_gate` in a new session. A healthy install returns the gate result and injects `[vault-bootstrap]`; the first run creates the `~/.dsh-memory/` skeleton automatically.
+
+For `Cannot find package`, `ctx.agents`, Python, or missing-bootstrap errors, see [Installation troubleshooting](docs/TROUBLESHOOTING.md).
+
+<details>
+<summary>Copy-paste prompt for AI-assisted installation</summary>
+
+```text
+Install github:zhujunpeng12/dsh-memory-system into the DeepSeek Harness web profile, restart it, run memory_gate, and verify that a new session receives [vault-bootstrap]. Do not read or upload any private memory content.
+```
+
+</details>
+
+## Why this one
+
+| What you care about | Design choice |
+|---|---|
+| Can I inspect my data? | Local Markdown is the source of truth; review it in any editor or Obsidian |
+| Does Chinese recall work? | Exact + CJK bigram BM25 + title/path/project rerank, with sources and trace |
+| Can the agent silently rewrite memory? | Writes are dry-run by default and require user confirmation |
+| Can concurrent sessions corrupt files? | Single-writer lease, heartbeat, crash recovery, before-images, and receipts |
+| Do I need a model/database service? | No background LLM, vector service, or database is required |
+| Will memory consume the whole context? | Hot packet ≤14KB, cold packet ≤4.2KB, details on demand |
+
+**Best for:** individuals and small teams that value auditability, local ownership, Chinese recall, and safe writes.
+
+**Not for:** server-side multi-tenancy, high-frequency multi-writer workloads, vector-first semantic retrieval, or fully autonomous unapproved memory writes.
 
 ## Why
 
@@ -31,42 +83,66 @@ Agent sessions are amnesic by default. This system turns "memory" into an engine
 
 ![DSH memory system flowchart](docs/memory-system-flowchart.png)
 
+Maintainable source: [HTML/CSS V3 diagram](docs/memory-system-flowchart.html).
+
 <details>
-<summary>Expand for editable Mermaid source diagram</summary>
+<summary>Expand for the editable Mermaid diagram synchronized with V3</summary>
 
 ```mermaid
 flowchart TD
-    Start([New session / task]) --> Hook[SessionStart Hook<br/>parse JSON + cwd · UTF-8 safe]
+    Start([New session / task]) --> Bundle["@zhujunpeng12/dsh-memory-system<br/>scoped bundle · inject tools + agents"]
+    Bundle --> Roots[Register 6 tools per root agent<br/>bootstrap · recall · gate · govern · trajectory · write]
 
-    Hook -->|solid: script execution| B1[① Hot-memory bootstrap<br/>bootstrap.py · bounded ≤14KB]
-    B1 --> B1a[Mechanical gate<br/>gaps · lock · sync]
-    B1 --> B1b[Instruction budget<br/>8KB/32KB/48KB soft warning]
-    B1 --> B1c[User profile<br/>full inject · not project-bound]
-    B1 --> B1d[Active rules<br/>star + citation count · budget-filtered]
-    B1 --> B1e[Project summary<br/>cwd ancestor matches vault]
-    B1 --> B1f[Recent event days<br/>14-day lookback · headings only · ≤180B each]
-    B1f -->|single merged inject| B1out["[vault-bootstrap] packet"]
+    subgraph L1[① Native hot-memory startup]
+      Roots --> Pre[First agent/pre-step · session-id dedupe]
+      Pre --> Boot[bootstrap.py<br/>section budgets · UTF-8-safe clipping · fail-open]
+      Boot --> Hot["[vault-bootstrap] · one inject ≤14KB"]
+      Boot --> HotParts[gate · instruction budget · user profile<br/>active rules · cwd project · 3 recent active event days]
+    end
 
-    B1out --> B2[② Working path<br/>AGENTS core · skill routing · minimal edits]
-    B2 --> B2out[Verified delivery<br/>syntax/config/real-run/UI evidence]
+    subgraph L2[② Working path]
+      Hot --> Work[AGENTS core → skill routing → minimal/root-cause work]
+      Work --> Deliver[Verified delivery<br/>syntax · config · real run · UI evidence]
+    end
 
-    B2 -.on-demand read.-> B3[③ Cold layer on demand<br/>full rules · historical events/raw · project notes · monthly index · session logs]
+    subgraph L3[③ On-demand cold recall]
+      Work -.history/correction signal + concrete topic.-> Recall[exact + Chinese bigram BM25<br/>title/path match]
+      Recall --> Rerank[metadata rerank · dedupe · per-file quota]
+      Rerank --> Cold[source-cited packet + trace ≤4.2KB]
+      Cold -.evidence back.-> Work
+    end
 
-    B3 --> Q1{Persistent value and<br/>user approves archive?}
-    Q1 -->|no| Q1no[Plain closing · no auto write<br/>session/disposed → check --closing]
-    Q1 -->|yes| B4[④ Authorized write transaction<br/>acquire lock · append raw facts only<br/>distill to events/projects/rules · release]
-    B4 --> B4out[Authorization gate<br/>check --closing --expect-write]
+    Deliver --> Decision{Persistent value and<br/>explicit archive approval?}
+    Decision -->|no| Close[Plain closing · no auto write<br/>memory_gate closing=true]
 
-    B4out --> B5[⑤ Slow maintenance<br/>mechanical health: gaps/size/core sync<br/>human governance: promote/arbitrate/expire/delete]
+    subgraph L4[④ Authorized write transaction]
+      Decision -->|yes| Preview[memory_write dry-run preview]
+      Preview --> Approve[tools/pre-execute human approval]
+      Approve --> Lock[30s single-writer lease · 5s heartbeat]
+      Lock --> Tx[lock-scoped reread · SHA precondition<br/>before-image + manifest]
+      Tx --> SafeWrite[raw EOF append / non-raw replace]
+      SafeWrite --> Receipt[validate · receipt · release<br/>rollback / recover on next writer]
+    end
 
-    B2 -.session trace.-> B6[⑥ Trajectory review loop<br/>trajectory-review.py read-only candidates]
-    B6 --> B6a[Evidence layer<br/>user correction = hard signal · tool ledger as clue only]
-    B6a --> B6b{Human review<br/>scenario → error → root cause → precondition}
-    B6b -->|repeats ≥3 times| B6c[Rule backfill<br/>graduate into rules-core]
-    B6b -->|ordinary exploration failure| B6d[No distillation]
-    B6b -->|approved distillation| B6e[raw → events<br/>keep conclusion + evidence pointer]
-    B6c --> B1
-    B6e --> B1
+    subgraph L5[⑤ Slow maintenance and governance]
+      Receipt --> Gate[memory_gate mechanical health]
+      Gate --> Govern[memory_govern read-only candidates<br/>duplicate/conflict/stale/size/lifecycle]
+      Govern --> Human[human promotion · arbitration · archive · delete approval]
+    end
+
+    subgraph L6[⑥ Trajectory-review feedback loop]
+      Work -.session trace.-> Evidence[user correction = hard signal<br/>session log + tool ledger as clues]
+      Evidence --> Review[memory_trajectory_review<br/>scenario → error → root cause → precondition]
+      Review --> Verify{Human verification}
+      Verify -->|ordinary exploration| Skip[No distillation]
+      Verify -->|approved| Distill[events / rules<br/>keep conclusion + evidence pointer]
+      Verify -->|stable pattern ≥3x| Graduate[graduate into rules-core]
+    end
+
+    Human --> Distill
+    Distill --> Next[next session reselects under byte budgets]
+    Graduate --> Next
+    Next --> Pre
 ```
 
 Legend: solid = scripted execution; dashed = on-demand read / human review; diamond = user authorization decision. The feedback loop distills rules and events back into the next session's hot memory.
@@ -78,11 +154,11 @@ Legend: solid = scripted execution; dashed = on-demand read / human review; diam
 The plugin form registers memory capabilities directly as agent tools:
 
 ```bash
-# Install straight from GitHub (no npm publish, no manual env/hooks/vault setup)
-dsh plugin add github:zhujunpeng12/dsh-memory-system
+# Install straight from GitHub (no manual env/hooks/vault setup)
+npx @deepseek-ai/dsh plugin --profile web add github:zhujunpeng12/dsh-memory-system
 
 # or local development:
-npm pack && dsh plugin add ./zhujunpeng12-dsh-memory-system-0.1.0.tgz
+npm pack && npx @deepseek-ai/dsh plugin --profile web add ./zhujunpeng12-dsh-memory-system-0.1.1.tgz
 ```
 
 Restart the Harness. The agent gains 6 tools, and **every new session gets the hot-memory packet injected automatically** (native pre-step listener in index.js — zero manual hooks configuration; disable with `DSH_MEMORY_AUTO_INJECT=false`):
@@ -110,7 +186,7 @@ Restart the Harness. The agent gains 6 tools, and **every new session gets the h
 
 **Contents**: mechanical gate status (gaps/lock/sync), instruction-budget audit, user profile, active core rules (star + citation filtered), current project summary (cwd-ancestor match), recent event headings (14-day lookback, ≤180B each).
 
-**How**: `memory_bootstrap` tool, or `python vault-guard/bootstrap.py --cwd <dir> --max-bytes 14000`. Automatic via hooks.
+**How**: `memory_bootstrap` tool, or `python vault-guard/bootstrap.py --cwd <dir> --max-bytes 14000`. The recommended plugin uses native `agent/pre-step` on the first turn of every session; manual hooks are only for standalone compatibility.
 
 ### ② Working path — rules-driven execution (methodology, no script)
 
@@ -161,7 +237,7 @@ Restart the Harness. The agent gains 6 tools, and **every new session gets the h
 ### 1. Install
 
 ```bash
-dsh plugin add github:zhujunpeng12/dsh-memory-system
+npx @deepseek-ai/dsh plugin --profile web add github:zhujunpeng12/dsh-memory-system
 ```
 
 Restart the Harness.

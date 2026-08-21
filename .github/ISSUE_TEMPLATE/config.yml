@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Installation troubleshooting
+    url: https://github.com/zhujunpeng12/dsh-memory-system/blob/master/docs/TROUBLESHOOTING.md
+    about: Check common plugin-loading and first-run failures before filing a bug.
+  - name: Security report
+    url: https://github.com/zhujunpeng12/dsh-memory-system/blob/master/SECURITY.md
+    about: Use the private reporting path for security-sensitive problems.

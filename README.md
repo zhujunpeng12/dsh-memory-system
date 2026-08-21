@@ -1,10 +1,62 @@
-![banner](./assets/banner.png)
+<p align="center">
+  <img src="./assets/banner.jpg" alt="DSH Memory System" width="100%">
+</p>
 
-# dsh-memory-system — DSH 持久记忆基础设施
+<div align="center">
 
-> 一套给 DeepSeek Harness (DSH) Agent 用的本地优先记忆系统：启动热记忆注入、可解释冷召回、租约锁保护的事务写入、只读治理与轨迹复盘。**宿主为 DSH 插件（JS 包裹），核心逻辑基于 Python 标准库 + Markdown 文件；零数据库、零向量服务、零外部服务依赖。**
+# dsh-memory-system
 
-**重要边界：本仓库只包含「机制」，不包含任何个人数据。** 记忆内容（画像、规则、事件、项目笔记）始终留在使用者本地——默认在 `~/.dsh-memory/`（无需 Obsidian），或通过 `MEMORY_VAULT` 环境变量指向自己的 Obsidian Vault。
+**让 DeepSeek Harness 跨会话记住项目、规则和纠正，同时把数据留在本机 Markdown。**
+
+[![CI](https://github.com/zhujunpeng12/dsh-memory-system/actions/workflows/ci.yml/badge.svg)](https://github.com/zhujunpeng12/dsh-memory-system/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/%40zhujunpeng12%2Fdsh-memory-system?label=npm)](https://www.npmjs.com/package/@zhujunpeng12/dsh-memory-system)
+[![DSH](https://img.shields.io/badge/DSH-0.1.0--rc.7-4F46E5)](https://github.com/deepseek-ai/deepseek-harness)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-22C55E.svg)](LICENSE)
+
+[English](README.en.md) · [工作原理](#为什么需要它) · [安全边界](#已知限制预期管理) · [参与贡献](CONTRIBUTING.md)
+
+</div>
+
+它不是另一个黑盒向量库：启动时只注入有预算的热记忆，需要历史细节时才做可解释的中文 BM25 召回；所有写入默认预览，并通过租约锁、before-image、SHA-256 前置条件和回执保护。默认使用 `~/.dsh-memory/`，无需 Obsidian、数据库、向量服务或外部 API。
+
+> **隐私边界**：仓库只包含机制，不包含任何个人数据。画像、规则、事件和项目笔记始终留在使用者本机；也可用 `MEMORY_VAULT` 指向自己的 Obsidian Vault。
+
+## 30 秒安装
+
+前提：已安装 DeepSeek Harness `0.1.0-rc.7`，Node.js 22/24 与 Python 3.10+ 可用。
+
+```bash
+npx @deepseek-ai/dsh plugin --profile web add github:zhujunpeng12/dsh-memory-system
+```
+
+重启 Harness 后，在新会话让 Agent 运行 `memory_gate`。成功时会看到门禁结果，并且首轮上下文包含 `[vault-bootstrap]`；首次运行会自动创建 `~/.dsh-memory/` 骨架。
+
+遇到 `Cannot find package`、`ctx.agents` 或热包未注入，请看 [安装故障排查](docs/TROUBLESHOOTING.md)。
+
+<details>
+<summary>AI 代装提示（复制整句给你的 Agent）</summary>
+
+```text
+请把 github:zhujunpeng12/dsh-memory-system 安装到 DeepSeek Harness 的 web profile，重启后运行 memory_gate，并确认新会话收到 [vault-bootstrap]。不要读取或上传任何私人记忆内容。
+```
+
+</details>
+
+## 为什么选它
+
+| 你关心的事 | 本项目的取舍 |
+|---|---|
+| 数据能否直接看懂 | 事实源是本机 Markdown，可用编辑器或 Obsidian 审阅 |
+| 中文历史能否召回 | exact + 中文 bigram BM25 + 标题/路径/项目重排，返回来源和 trace |
+| Agent 会不会乱写记忆 | 写操作默认 dry-run；用户确认后才进入可恢复事务 |
+| 多会话会不会写坏文件 | 单写者租约锁、心跳、崩溃恢复、before-image 与提交回执 |
+| 是否需要模型或数据库服务 | 不需要；默认零后台 LLM、零向量服务、零数据库 |
+| 上下文会不会越积越重 | 热包 ≤14KB、冷包 ≤4.2KB，细节按需打开 |
+
+**适合**：重视可审计、本地优先、中文召回和写入安全的个人/小团队 DSH 工作流。
+
+**不适合**：需要多租户服务端、高频多写者、默认语义向量或全自动无审批记忆写入的场景。
 
 ## 为什么需要它
 
@@ -31,42 +83,66 @@ Agent 会话之间默认是失忆的。本系统用 **六层机制** 把「记�
 
 ![DSH 记忆系统流程图](docs/memory-system-flowchart.png)
 
+可维护图源：[HTML/CSS V3 源图](docs/memory-system-flowchart.html)。
+
 <details>
-<summary>展开查看可编辑的 Mermaid 源码图</summary>
+<summary>展开查看可编辑的 Mermaid 源码图（与 V3 PNG 同步）</summary>
 
 ```mermaid
 flowchart TD
-    Start([新会话 / 新任务]) --> Hook[SessionStart Hook<br/>解析 JSON 与 cwd · UTF-8 兼容]
+    Start([新会话 / 新任务]) --> Bundle["@zhujunpeng12/dsh-memory-system<br/>scoped bundle · inject tools + agents"]
+    Bundle --> Roots[每个 root agent 注册 6 工具<br/>bootstrap · recall · gate · govern · trajectory · write]
 
-    Hook -->|实线:脚本机械执行| B1[① 启动热记忆<br/>bootstrap.py · 有界上下文 ≤14KB]
-    B1 --> B1a[机械门禁<br/>缺口 · 锁 · 同步]
-    B1 --> B1b[指令预算<br/>8KB/32KB/48KB 软预警]
-    B1 --> B1c[用户画像<br/>完整注入 · 不绑定项目]
-    B1 --> B1d[活跃规则<br/>核心标记 + 引用次数 · 按预算筛选]
-    B1 --> B1e[项目摘要<br/>cwd 祖先匹配 Vault]
-    B1 --> B1f[最近事件日<br/>14 天回溯 · 只取主标题 · 单条 ≤180B]
-    B1f -->|合并一次注入| B1out["[vault-bootstrap] 热包"]
+    subgraph L1[① 原生启动热记忆]
+      Roots --> Pre[agent/pre-step 首轮 · session id 去重]
+      Pre --> Boot[bootstrap.py<br/>分段预算 · UTF-8 安全截断 · 失败放行]
+      Boot --> Hot["[vault-bootstrap] · 一次注入 ≤14KB"]
+      Boot --> HotParts[门禁 · 指令预算 · 用户画像<br/>活跃规则 · cwd 项目 · 最近 3 个有效事件日]
+    end
 
-    B1out --> B2[② 工作路径<br/>AGENTS 内核 · Skill 路由 · 最小修改]
-    B2 --> B2out[验证后交付<br/>语法/配置/真实运行/界面证据]
+    subgraph L2[② 工作路径]
+      Hot --> Work[AGENTS 内核 → Skill 路由 → 最小修改/根因调查]
+      Work --> Deliver[验证后交付<br/>语法 · 配置 · 真实运行 · UI 证据]
+    end
 
-    B2 -.需要细节时按需读取.-> B3[③ 冷层按需读取<br/>完整 rules · 历史 events/raw · 项目笔记 · 月度索引 · session 日志]
+    subgraph L3[③ 冷层按需召回]
+      Work -.历史/纠正信号 + 具体主题.-> Recall[exact + 中文 bigram BM25<br/>标题/路径匹配]
+      Recall --> Rerank[元数据重排 · 去重 · 单文件配额]
+      Rerank --> Cold[带来源与 trace 的冷包 ≤4.2KB]
+      Cold -.证据返回.-> Work
+    end
 
-    B3 --> Q1{有持久价值且<br/>用户同意归档?}
-    Q1 -->|否| Q1no[普通收尾 · 不自动写 Vault<br/>session/disposed → check --closing]
-    Q1 -->|是| B4[④ 授权写入事务<br/>拿锁 vault-lock · 写 raw 只记事实<br/>提炼归位 events/项目/rules · 释放锁]
-    B4 --> B4out[授权门禁<br/>check --closing --expect-write]
+    Deliver --> Decision{有持久价值且<br/>用户明确同意归档?}
+    Decision -->|否| Close[普通收尾 · 不自动写 Vault<br/>memory_gate closing=true]
 
-    B4out --> B5[⑤ 慢维护<br/>机械体检 raw 缺口/体量/core 同步<br/>人工治理 毕业/仲裁/过期/删除确认]
+    subgraph L4[④ 授权写入事务]
+      Decision -->|是| Preview[memory_write dry-run 预览]
+      Preview --> Approve[tools/pre-execute 人工确认]
+      Approve --> Lock[30s 租约单写锁 · 5s 心跳]
+      Lock --> Tx[锁内重读 · SHA 前置 · before-image/manifest]
+      Tx --> SafeWrite[raw EOF append / 非 raw replace]
+      SafeWrite --> Receipt[校验 · receipt · release<br/>失败回滚 / 下次 recover]
+    end
 
-    B2 -.会话轨迹.-> B6[⑥ 轨迹复盘反馈闭环<br/>trajectory-review.py 只读候选]
-    B6 --> B6a[证据层<br/>用户纠正=硬信号 · session 日志 · 工具账本只作线索]
-    B6a --> B6b{人工核验<br/>场景→错误→根因→先决动作}
-    B6b -->|重复 ≥3 次| B6c[规则回灌<br/>毕业进 rules-core]
-    B6b -->|普通探索失败| B6d[不沉淀]
-    B6b -->|授权沉淀| B6e[raw → events<br/>保留结论与证据指针]
-    B6c --> B1
-    B6e --> B1
+    subgraph L5[⑤ 慢维护与治理]
+      Receipt --> Gate[memory_gate 机械体检]
+      Gate --> Govern[memory_govern 只读候选<br/>重复/冲突/过期/体量/生命周期]
+      Govern --> Human[人工毕业 · 仲裁 · 归档 · 删除确认]
+    end
+
+    subgraph L6[⑥ 轨迹复盘反馈闭环]
+      Work -.session 轨迹.-> Evidence[用户纠正=硬信号<br/>session 日志 + 工具账本只作线索]
+      Evidence --> Review[memory_trajectory_review<br/>场景 → 错误 → 根因 → 先决动作]
+      Review --> Verify{人工核验}
+      Verify -->|普通探索| Skip[不沉淀]
+      Verify -->|批准| Distill[events / rules<br/>保留结论与证据指针]
+      Verify -->|重复 ≥3 次| Graduate[毕业进 rules-core]
+    end
+
+    Human --> Distill
+    Distill --> Next[下一次 session 重新按预算选取]
+    Graduate --> Next
+    Next --> Pre
 ```
 
 图例:实线 = 脚本机械执行;虚线 = 按需读取 / 人工核验;菱形 = 用户授权判断。反馈闭环:轨迹复盘产出的规则与事件,回灌到下一次会话的热记忆。
@@ -81,7 +157,7 @@ flowchart TD
 
 **包含**：机械门禁状态（缺口/锁/同步）、指令预算审计、用户画像、活跃核心规则（按 ⭐ 与引用计数筛选）、当前项目摘要（按 cwd 祖先匹配）、最近事件主标题（14 天回溯、单条 ≤180B）。
 
-**怎么用**：`memory_bootstrap` 工具，或 `python vault-guard/bootstrap.py --cwd <项目目录> --max-bytes 14000`。接入 hooks 后每次新会话自动执行。
+**怎么用**：`memory_bootstrap` 工具，或 `python vault-guard/bootstrap.py --cwd <项目目录> --max-bytes 14000`。推荐插件形态通过原生 `agent/pre-step` 在每个 session 首轮自动执行；手动 hooks 仅用于 standalone 兼容模式。
 
 ### ② 工作路径 — 按规则执行任务（方法论层，无脚本）
 
@@ -132,12 +208,12 @@ flowchart TD
 插件形态把记忆能力直接注册为 Agent 工具，并随 DSH 装配自动生效：
 
 ```bash
-# 从 GitHub 直接安装（无需 npm 发布、无需手动配环境/hooks/Vault 目录）
-dsh plugin add github:zhujunpeng12/dsh-memory-system
+# 从 GitHub 直接安装（无需手动配环境/hooks/Vault 目录）
+npx @deepseek-ai/dsh plugin --profile web add github:zhujunpeng12/dsh-memory-system
 
 # 或本地开发安装
 npm pack            # 生成 tarball
-dsh plugin add ./zhujunpeng12-dsh-memory-system-0.1.0.tgz
+npx @deepseek-ai/dsh plugin --profile web add ./zhujunpeng12-dsh-memory-system-0.1.1.tgz
 ```
 
 安装后重启 Harness，Agent 自动获得 6 个记忆工具，且**每个新会话自动注入热记忆包**（index.js 原生监听 pre-step，零手动 hooks 配置；`DSH_MEMORY_AUTO_INJECT=false` 可关闭）：
@@ -160,7 +236,7 @@ dsh plugin add ./zhujunpeng12-dsh-memory-system-0.1.0.tgz
 ### 1. 安装
 
 ```bash
-dsh plugin add github:zhujunpeng12/dsh-memory-system
+npx @deepseek-ai/dsh plugin --profile web add github:zhujunpeng12/dsh-memory-system
 ```
 
 重启 Harness。
