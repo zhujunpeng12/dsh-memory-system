@@ -29,8 +29,8 @@ jobs:
       - name: Node syntax check
         run: node --check index.js && node --check bridge.js
 
-      - name: Node plugin-bridge tests
-        run: node --test test_plugin_bridge.test.mjs
+      - name: Node manifest, package, and bridge tests
+        run: node --test test_*.test.mjs
 
       - name: npm pack (whitelist sanity)
         run: npm pack --dry-run 2>&1 | tee /tmp/pack.log && ! grep -E "__pycache__|\.pyc" /tmp/pack.log

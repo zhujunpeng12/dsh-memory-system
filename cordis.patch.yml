@@ -4,4 +4,5 @@
 # memory_write) are registered per agent via index.js when the bundle is loaded.
 - insert:
     - id: dsh-memory-system
-      name: 'dsh-memory-system'
+      name: '@zhujunpeng12/dsh-memory-system'
+      inject: [tools, agents]

@@ -1,0 +1,33 @@
+name: Feature request
+description: Propose a focused improvement with a concrete use case
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What cannot be done safely or efficiently today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: boundary
+    attributes:
+      label: Does this change a safety boundary?
+      options:
+        - No
+        - Yes — write approval / deletion / privacy
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Example or acceptance criteria
+      description: Prefer a minimal scenario or measurable expected result.

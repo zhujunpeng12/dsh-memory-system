@@ -1,10 +1,62 @@
-![banner](./assets/banner.png)
+<p align="center">
+  <img src="./assets/banner.jpg" alt="DSH Memory System" width="100%">
+</p>
 
-# dsh-memory-system — DSH 持久记忆基础设施
+<div align="center">
 
-> 一套给 DeepSeek Harness (DSH) Agent 用的本地优先记忆系统：启动热记忆注入、可解释冷召回、租约锁保护的事务写入、只读治理与轨迹复盘。**宿主为 DSH 插件（JS 包裹），核心逻辑基于 Python 标准库 + Markdown 文件；零数据库、零向量服务、零外部服务依赖。**
+# dsh-memory-system
 
-**重要边界：本仓库只包含「机制」，不包含任何个人数据。** 记忆内容（画像、规则、事件、项目笔记）始终留在使用者本地——默认在 `~/.dsh-memory/`（无需 Obsidian），或通过 `MEMORY_VAULT` 环境变量指向自己的 Obsidian Vault。
+**让 DeepSeek Harness 跨会话记住项目、规则和纠正，同时把数据留在本机 Markdown。**
+
+[![CI](https://github.com/zhujunpeng12/dsh-memory-system/actions/workflows/ci.yml/badge.svg)](https://github.com/zhujunpeng12/dsh-memory-system/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/%40zhujunpeng12%2Fdsh-memory-system?label=npm)](https://www.npmjs.com/package/@zhujunpeng12/dsh-memory-system)
+[![DSH](https://img.shields.io/badge/DSH-0.1.0--rc.7-4F46E5)](https://github.com/deepseek-ai/deepseek-harness)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-22C55E.svg)](LICENSE)
+
+[English](README.en.md) · [工作原理](#为什么需要它) · [安全边界](#已知限制预期管理) · [参与贡献](CONTRIBUTING.md)
+
+</div>
+
+它不是另一个黑盒向量库：启动时只注入有预算的热记忆，需要历史细节时才做可解释的中文 BM25 召回；所有写入默认预览，并通过租约锁、before-image、SHA-256 前置条件和回执保护。默认使用 `~/.dsh-memory/`，无需 Obsidian、数据库、向量服务或外部 API。
+
+> **隐私边界**：仓库只包含机制，不包含任何个人数据。画像、规则、事件和项目笔记始终留在使用者本机；也可用 `MEMORY_VAULT` 指向自己的 Obsidian Vault。
+
+## 30 秒安装
+
+前提：已安装 DeepSeek Harness `0.1.0-rc.7`，Node.js 22/24 与 Python 3.10+ 可用。
+
+```bash
+npx @deepseek-ai/dsh plugin --profile web add github:zhujunpeng12/dsh-memory-system
+```
+
+重启 Harness 后，在新会话让 Agent 运行 `memory_gate`。成功时会看到门禁结果，并且首轮上下文包含 `[vault-bootstrap]`；首次运行会自动创建 `~/.dsh-memory/` 骨架。
+
+遇到 `Cannot find package`、`ctx.agents` 或热包未注入，请看 [安装故障排查](docs/TROUBLESHOOTING.md)。
+
+<details>
+<summary>AI 代装提示（复制整句给你的 Agent）</summary>
+
+```text
+请把 github:zhujunpeng12/dsh-memory-system 安装到 DeepSeek Harness 的 web profile，重启后运行 memory_gate，并确认新会话收到 [vault-bootstrap]。不要读取或上传任何私人记忆内容。
+```
+
+</details>
+
+## 为什么选它
+
+| 你关心的事 | 本项目的取舍 |
+|---|---|
+| 数据能否直接看懂 | 事实源是本机 Markdown，可用编辑器或 Obsidian 审阅 |
+| 中文历史能否召回 | exact + 中文 bigram BM25 + 标题/路径/项目重排，返回来源和 trace |
+| Agent 会不会乱写记忆 | 写操作默认 dry-run；用户确认后才进入可恢复事务 |
+| 多会话会不会写坏文件 | 单写者租约锁、心跳、崩溃恢复、before-image 与提交回执 |
+| 是否需要模型或数据库服务 | 不需要；默认零后台 LLM、零向量服务、零数据库 |
+| 上下文会不会越积越重 | 热包 ≤14KB、冷包 ≤4.2KB，细节按需打开 |
+
+**适合**：重视可审计、本地优先、中文召回和写入安全的个人/小团队 DSH 工作流。
+
+**不适合**：需要多租户服务端、高频多写者、默认语义向量或全自动无审批记忆写入的场景。
 
 ## 为什么需要它
 
@@ -132,12 +184,12 @@ flowchart TD
 插件形态把记忆能力直接注册为 Agent 工具，并随 DSH 装配自动生效：
 
 ```bash
-# 从 GitHub 直接安装（无需 npm 发布、无需手动配环境/hooks/Vault 目录）
-dsh plugin add github:zhujunpeng12/dsh-memory-system
+# 从 GitHub 直接安装（无需手动配环境/hooks/Vault 目录）
+npx @deepseek-ai/dsh plugin --profile web add github:zhujunpeng12/dsh-memory-system
 
 # 或本地开发安装
 npm pack            # 生成 tarball
-dsh plugin add ./zhujunpeng12-dsh-memory-system-0.1.0.tgz
+npx @deepseek-ai/dsh plugin --profile web add ./zhujunpeng12-dsh-memory-system-0.1.1.tgz
 ```
 
 安装后重启 Harness，Agent 自动获得 6 个记忆工具，且**每个新会话自动注入热记忆包**（index.js 原生监听 pre-step，零手动 hooks 配置；`DSH_MEMORY_AUTO_INJECT=false` 可关闭）：
@@ -160,7 +212,7 @@ dsh plugin add ./zhujunpeng12-dsh-memory-system-0.1.0.tgz
 ### 1. 安装
 
 ```bash
-dsh plugin add github:zhujunpeng12/dsh-memory-system
+npx @deepseek-ai/dsh plugin --profile web add github:zhujunpeng12/dsh-memory-system
 ```
 
 重启 Harness。

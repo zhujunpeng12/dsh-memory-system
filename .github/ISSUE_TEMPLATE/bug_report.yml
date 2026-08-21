@@ -1,0 +1,66 @@
+name: Bug report
+description: Report a reproducible install, runtime, recall, or transaction problem
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve dsh-memory-system. Do not paste credentials, private memory, session logs, or personal absolute paths.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Installation / plugin loading
+        - Hot bootstrap
+        - Cold recall
+        - Transactional write / lock
+        - Governance / trajectory review
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: DSH, dsh-memory-system, Node.js, and Python versions
+      placeholder: "DSH 0.1.0-rc.7; plugin 0.1.1; Node 24.x; Python 3.11"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: "Windows 11 / Ubuntu 24.04 / macOS 15"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Include the install/run command and exact steps. Redact usernames and paths.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and redacted error
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed credentials, private memory, session content, usernames, and private absolute paths.
+          required: true
+        - label: I checked the troubleshooting guide and searched existing issues.
+          required: true
