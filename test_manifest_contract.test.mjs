@@ -5,7 +5,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { apply } from './index.js'
@@ -86,4 +86,13 @@ test('architecture docs describe the native V3 plugin path', () => {
   assert.match(diagram, /架构图[^<]*<span class="version">· V3/)
   assert.match(diagram, /inject: tools \+ agents/)
   assert.match(diagram, /memory_write · apply=true/)
+})
+
+test('GitHub social preview keeps the recommended shape and upload budget', () => {
+  const previewPath = join(ROOT, 'assets/social-preview.png')
+  const preview = readFileSync(previewPath)
+  assert.equal(preview.subarray(1, 4).toString('ascii'), 'PNG')
+  assert.equal(preview.readUInt32BE(16), 1280)
+  assert.equal(preview.readUInt32BE(20), 640)
+  assert.ok(statSync(previewPath).size < 1_000_000, 'GitHub social preview must stay below 1 MB')
 })
