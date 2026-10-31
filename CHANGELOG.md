@@ -5,6 +5,9 @@
 ## [Unreleased]
 
 ### Added
+- 显式 raw 冷召回支持正文哈希校验与 correction/tombstone 生命周期过滤；审计模式保留历史，默认仍排除 raw
+- 重复 ID、环、竞争纠错、缺失目标和不完整事务的可解释诊断，不自动改写记忆
+- 独立的中文合成召回评测，明确展示普通摘要过期与词汇改写仍未解决的边界
 - DSH 插件形态(`dsh-memory-system`):6 个 Agent 工具(memory_bootstrap / memory_recall / memory_gate / memory_govern / memory_trajectory_review / memory_write)
 - `templates/` 脱敏记忆库骨架:10 分钟搭建自己的记忆系统
 - 英文 README(README.en.md)

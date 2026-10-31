@@ -244,6 +244,8 @@ function registerAgentTools(agent) {
       query: { type: 'string', required: true, description: 'The question or topic to recall.' },
       cwd: { type: 'string', description: 'Working directory used for project reranking. Defaults to the session cwd.' },
       force: { type: 'boolean', description: 'Skip the trigger heuristics and always run recall.' },
+      includeRaw: { type: 'boolean', description: 'Explicitly include raw evidence; verified superseded and tombstone entries are filtered by default.' },
+      includeHistory: { type: 'boolean', description: 'Audit raw history including superseded/invalid entries; requires includeRaw. Not current facts.' },
       top: { type: 'integer', description: 'Maximum hits to consider. Defaults to 8.' },
     },
     output: JSON_OUTPUT,
