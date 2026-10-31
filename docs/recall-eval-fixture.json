@@ -1,0 +1,31 @@
+{
+  "schema": "dsh-recall-eval-v1",
+  "synthetic": true,
+  "description": "Small hand-authored synthetic diagnostic set; not real user data or an unbiased benchmark.",
+  "as_of": "2026-08-22",
+  "documents": [
+    {"id":"cache", "path":"projects/alpha/cache.md", "title":"缓存失效", "body":"缓存保留十五分钟，过期后重新读取。"},
+    {"id":"backup", "path":"projects/alpha/backup.md", "title":"备份策略", "body":"每天凌晨执行增量备份，副本存放在本机磁盘。"},
+    {"id":"privacy", "path":"memory/rules.md", "title":"隐私规则", "body":"禁止把私有笔记上传到外部服务。"},
+    {"id":"alpha", "path":"projects/alpha/config.md", "title":"连接配置", "body":"项目连接端口采用 8021。"},
+    {"id":"beta", "path":"projects/beta/config.md", "title":"连接配置", "body":"项目连接端口采用 9032。"},
+    {"id":"old-curated", "path":"memory/events/2026-08-20.md", "title":"旧版通知渠道", "body":"通知渠道原先选择邮件。此条是历史记录。"},
+    {"id":"new-curated", "path":"memory/events/2026-08-21.md", "title":"新版通知渠道", "body":"通知渠道现已改为短信，不再用邮件。"},
+    {"id":"raw-old", "path":"memory/events/2026-08-20.raw.md", "title":"旧版重试间隔", "body":"重试间隔设置为三十秒。", "raw":{"type":"fact"}},
+    {"id":"raw-new", "path":"memory/events/2026-08-21.raw.md", "title":"新版重试间隔", "body":"重试间隔改为五秒，替代旧决定。", "raw":{"type":"correction","supersedes":"raw-old"}},
+    {"id":"raw-deleted", "path":"memory/events/2026-08-20.raw.md", "title":"临时访问暗号", "body":"临时访问暗号为紫色松鼠。", "raw":{"type":"fact"}},
+    {"id":"raw-tombstone", "path":"memory/events/2026-08-21.raw.md", "title":"撤销临时授权", "body":"该授权已撤销，不再使用。", "raw":{"type":"tombstone","supersedes":"raw-deleted"}}
+  ],
+  "cases": [
+    {"id":"exact", "category":"exact", "query":"缓存失效", "expected":["cache"]},
+    {"id":"paraphrase", "category":"synonym", "query":"拷贝留存方案", "expected":["backup"]},
+    {"id":"negation", "category":"negation", "query":"是否允许上传私有笔记", "expected":["privacy"]},
+    {"id":"no-answer", "category":"no-answer", "query":"火星轨道周期", "expected":[]},
+    {"id":"project-alpha", "category":"project-collision", "cwd":"alpha", "query":"连接端口", "expected":["alpha"], "preferred_first":"alpha"},
+    {"id":"project-beta", "category":"project-collision", "cwd":"beta", "query":"连接端口", "expected":["beta"], "preferred_first":"beta"},
+    {"id":"curated-correction", "category":"curated-history-limitation", "query":"通知渠道", "expected":["new-curated"], "forbidden":["old-curated"]},
+    {"id":"raw-default-exclusion", "category":"raw-boundary", "query":"重试间隔", "expected":[]},
+    {"id":"raw-correction", "category":"raw-lifecycle", "query":"重试间隔", "include_raw":true, "expected":["raw-new"], "forbidden":["raw-old"]},
+    {"id":"raw-tombstone", "category":"raw-lifecycle", "query":"临时访问暗号", "include_raw":true, "expected":[], "forbidden":["raw-deleted","raw-tombstone"]}
+  ]
+}
