@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import subprocess
+import sys
+from datetime import date
 import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from govern import scan_governance
 from vault_lock import SCHEMA, atomic_json
@@ -60,7 +65,12 @@ class GovernanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             vault = self.make_vault(Path(tmp))
             before = digest_tree(vault)
-            candidates, summary = scan_governance(vault, recent_days=60, archive_days=120)
+            # Keep the dated fixture recent regardless of when CI runs.
+            with mock.patch("govern.date") as clock:
+                clock.side_effect = date
+                clock.today.return_value = date(2026, 8, 16)
+                clock.fromisoformat.side_effect = date.fromisoformat
+                candidates, summary = scan_governance(vault, recent_days=60, archive_days=120)
             after = digest_tree(vault)
             categories = {item.category for item in candidates}
             self.assertEqual(before, after)
@@ -78,6 +88,30 @@ class GovernanceTests(unittest.TestCase):
                 "rule-zero-citation",
             }.issubset(categories))
             self.assertTrue(all(item.automatic is False for item in candidates))
+
+    def test_incomplete_raw_is_visible_in_read_only_governance_and_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            memory = vault / "memory"
+            manifest = memory / ".vault-transactions" / "partial-raw" / "manifest.json"
+            atomic_json(manifest, {
+                "transaction_id": "partial-raw", "state": "incomplete_preserved",
+                "raw_history_preserved": True,
+            })
+            (memory / "rules.md").write_text("# Rules\n", encoding="utf-8")
+            (memory / "rules-core.md").write_text("# Core\n", encoding="utf-8")
+            before = digest_tree(vault)
+            candidates, _ = scan_governance(vault)
+            self.assertIn("raw-incomplete-preserved", {item.category for item in candidates})
+            self.assertNotIn("transaction-pending", {item.category for item in candidates})
+            result = subprocess.run(
+                [sys.executable, str(Path(__file__).parent / "check.py"), "--closing"],
+                env={**os.environ, "MEMORY_VAULT": str(vault), "DSH_HOME": str(Path(tmp) / "dsh")},
+                capture_output=True, text=True, encoding="utf-8", check=False,
+            )
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("raw 追加未验证且原始字节已保留", result.stdout)
+            self.assertEqual(before, digest_tree(vault))
 
 
 if __name__ == "__main__":

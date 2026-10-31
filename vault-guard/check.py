@@ -153,18 +153,24 @@ def main(argv=None):
         oks.append("Vault 写锁 free")
 
     pending = []
+    incomplete_raw = []
     if TX_ROOT.exists():
         for manifest in TX_ROOT.glob("*/manifest.json"):
             try:
                 data = json.loads(manifest.read_text(encoding="utf-8"))
             except Exception:
                 continue
-            if data.get("state") not in TERMINAL_STATES:
+            if data.get("state") == "incomplete_preserved":
+                incomplete_raw.append(str(data.get("transaction_id") or manifest.parent.name))
+            elif data.get("state") not in TERMINAL_STATES:
                 pending.append(f"{data.get('transaction_id')}:{data.get('state')}")
     if pending:
         issues.append(f"未完成 Vault 事务 {len(pending)} 个：{', '.join(pending[:3])}；运行 vault-write.py recover --apply")
     else:
         oks.append("无未完成 Vault 事务")
+
+    if incomplete_raw:
+        issues.append(f"raw 追加未验证且原始字节已保留 {len(incomplete_raw)} 个：{', '.join(incomplete_raw[:3])}；请核查 manifest 与 raw，勿将半写入当作已提交事实")
 
     # 只有已获写入授权的事务才要求“今日必须有 raw”。普通 session/disposed
     # 只检查上方“已有 raw 是否漏提炼”，不能逼纯聊天/临时查询制造 L0。

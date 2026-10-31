@@ -13,7 +13,7 @@ from pathlib import Path
 from unittest import mock
 
 from vault_lock import SCHEMA, LockBusyError, VaultLock, atomic_json
-from vault_tx import VaultTransaction, sha256_file
+from vault_tx import VaultTransaction, sha256_bytes, sha256_file
 
 
 ROOT = Path(__file__).parent
@@ -125,6 +125,109 @@ class TransactionTests(unittest.TestCase):
             self.assertEqual(target.read_text(encoding="utf-8"), "known-good\n")
             manifest = json.loads((old_tx / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["state"], "rolled_back")
+
+    def test_raw_recovery_verifies_complete_bytes_and_preserves_history(self) -> None:
+        prefix = b"# existing history\n"
+        block = b'## entry\n<!-- dsh-entry: {"id": "entry-1"} -->\ncomplete body\n\n'
+        cases = [
+            ("complete", prefix + block, {}, "committed_recovered"),
+            ("truncated", prefix + block[:-8], {}, "incomplete_preserved"),
+            ("same-size-corrupt", prefix + block.replace(b"body", b"BAD!"),
+             {"after_size": len(prefix + block)}, "incomplete_preserved"),
+            ("legacy-size-only", prefix + block,
+             {"after_size": len(prefix + block), "append_sha256": ""}, "incomplete_preserved"),
+            ("later-append", prefix + block + b"later entry\n",
+             {"append_size": len(block)}, "committed_recovered"),
+            ("absent", None, {}, "rolled_back"),
+        ]
+        for label, content, extra, expected in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as tmp:
+                vault = Path(tmp) / "vault"
+                memory = vault / "memory"
+                target = memory / "events" / "2026-08-15.raw.md"
+                target.parent.mkdir(parents=True)
+                if content is not None:
+                    target.write_bytes(content)
+                old_tx = memory / ".vault-transactions" / "old-raw"
+                atomic_json(old_tx / "manifest.json", {
+                    "transaction_id": "old-raw", "state": "committing",
+                    "operations": [{
+                        "kind": "raw_append", "target": str(target),
+                        "entry_id": "entry-1", "before_size": len(prefix),
+                        "append_sha256": sha256_bytes(block), **extra,
+                    }],
+                })
+                with VaultTransaction(vault=vault, purpose="recover-raw") as tx:
+                    tx.commit_noop()
+                manifest = json.loads((old_tx / "manifest.json").read_text())
+                receipt = json.loads((old_tx / "receipt.json").read_text())
+                self.assertEqual(manifest["state"], expected)
+                self.assertEqual(receipt["state"], expected)
+                self.assertEqual(target.read_bytes() if target.exists() else None, content)
+                # The next writer must not reprocess a terminal receipt.
+                with VaultTransaction(vault=vault, purpose="recover-again") as tx:
+                    self.assertEqual(tx.data["recovered_before_begin"], [])
+                    tx.commit_noop()
+                self.assertFalse((memory / ".vault.lock").exists())
+
+    def test_raw_partial_write_with_entry_id_is_not_committed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            target = vault / "memory" / "events" / "2026-08-15.raw.md"
+            real_write = os.write
+            calls = 0
+
+            def partial_write(fd, data):
+                nonlocal calls
+                calls += 1
+                if calls == 1:
+                    # Write metadata (including the ID), but none of the body.
+                    end = bytes(data).index(b" -->\n") + len(b" -->\n")
+                    return real_write(fd, data[:end])
+                raise OSError("injected partial-write failure")
+
+            with VaultTransaction(vault=vault, purpose="partial-write") as tx:
+                with mock.patch("vault_tx.os.write", side_effect=partial_write):
+                    with self.assertRaisesRegex(OSError, "partial-write"):
+                        tx.append_raw_entry(target, title="entry", body="complete body",
+                                            source="unit-test", entry_id="entry-1")
+            self.assertIn(b'"id": "entry-1"', target.read_bytes())
+            self.assertNotIn(b"complete body", target.read_bytes())
+            self.assertEqual(json.loads(tx.manifest_path.read_text())["state"], "incomplete_preserved")
+            self.assertEqual(json.loads((tx.tx_dir / "receipt.json").read_text())["state"], "incomplete_preserved")
+
+    def test_zero_progress_raw_write_fails_without_hanging(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            target = vault / "memory" / "events" / "2026-08-15.raw.md"
+            with VaultTransaction(vault=vault, purpose="zero-write") as tx:
+                with mock.patch("vault_tx.os.write", return_value=0):
+                    with self.assertRaisesRegex(OSError, "no write progress"):
+                        tx.append_raw_entry(target, title="entry", body="body", source="unit-test")
+            self.assertEqual(json.loads(tx.manifest_path.read_text())["state"], "rolled_back")
+            self.assertEqual(target.read_bytes(), b"")
+
+    def test_raw_verification_read_failure_remains_retryable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            target = vault / "memory" / "events" / "2026-08-15.raw.md"
+            with VaultTransaction(vault=vault, purpose="read-failure") as tx:
+                with mock.patch("vault_tx.sha256_file", side_effect=OSError("audit failed")), \
+                     mock.patch("vault_tx._raw_append_state", side_effect=PermissionError("read denied")):
+                    with self.assertRaisesRegex(OSError, "audit failed"):
+                        tx.append_raw_entry(target, title="entry", body="body", source="unit-test")
+            self.assertEqual(json.loads(tx.manifest_path.read_text())["state"], "recovery_required")
+            before = target.read_bytes()
+            with mock.patch("vault_tx._raw_append_state", side_effect=PermissionError("read denied")):
+                with self.assertRaises(PermissionError):
+                    with VaultTransaction(vault=vault, purpose="retry-denied"):
+                        pass
+            self.assertFalse((vault / "memory" / ".vault.lock").exists())
+            self.assertEqual(json.loads(tx.manifest_path.read_text())["state"], "recovery_required")
+            with VaultTransaction(vault=vault, purpose="retry-readable") as next_tx:
+                next_tx.commit_noop()
+            self.assertEqual(json.loads(tx.manifest_path.read_text())["state"], "committed_recovered")
+            self.assertEqual(target.read_bytes(), before)
 
     def test_parallel_raw_appends_are_serialized_and_immutable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

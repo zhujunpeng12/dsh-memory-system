@@ -111,7 +111,11 @@ def scan_governance(
                 _add(findings, "transaction-corrupt", "high", str(manifest), f"manifest 无法解析：{exc}", "用备份与 before-image 人工核查，再运行恢复预览。")
                 continue
             state = str(data.get("state") or "missing")
-            if state not in TERMINAL_STATES:
+            if state == "incomplete_preserved":
+                _add(findings, "raw-incomplete-preserved", "high", str(manifest),
+                     "raw 追加未通过完整性验证，原始字节保留，未标记提交或回滚。",
+                     "人工核查 manifest 与 raw；不要将半写入当作已提交事实，不要原地改写 raw。")
+            elif state not in TERMINAL_STATES:
                 _add(
                     findings,
                     "transaction-pending",
