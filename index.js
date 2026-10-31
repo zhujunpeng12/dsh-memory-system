@@ -127,6 +127,10 @@ function runScript(script, args = [], { timeoutMs = RUN_TIMEOUT_MS } = {}) {
       env: runEnv(),
       windowsHide: true,
     })
+    // Pipe chunks may split a UTF-8 character. Decode as a stream rather than
+    // coercing each Buffer independently, which corrupts Chinese/emoji output.
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
     let out = ''
     let err = ''
     let timedOut = false

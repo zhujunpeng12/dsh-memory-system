@@ -15,6 +15,10 @@
 - V3 架构流程图与可维护 HTML/CSS 图源：原生 bundle、6 工具、混合冷召回、可恢复写入和人机治理闭环
 
 ### Fixed
+- raw 崩溃恢复不再把 manifest 字典覆盖成文件字节；使用完整追加块哈希校验，拒绝半写入或同大小损坏的伪成功
+- raw 不完整追加保留为 `incomplete_preserved` 并由门禁/治理显式告警；读取失败可重试，零进展写入及时报错
+- Node 子进程 stdout/stderr 使用流式 UTF-8 解码，避免中文或 emoji 跨数据块时损坏
+- 治理测试固定日期基准，避免随 CI 运行日期失效
 - GitHub/pnpm 安装后 loader 仍按裸名 `dsh-memory-system` 查包，导致 `ERR_MODULE_NOT_FOUND`
 - 插件调用 `ctx.agents.roots()` 却未声明 `agents` 注入，导致启动时 `ctx.agents` 为 `undefined`
 - `package.json` 意外依赖自身已发布的 0.1.0，导致 GitHub master 安装混入陈旧包
