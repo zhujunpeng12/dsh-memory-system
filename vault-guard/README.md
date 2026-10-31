@@ -100,3 +100,10 @@ raw 事务恢复按追加起点、追加字节数和 SHA-256 验证完整追加�
 - `recovery_required`：发生临时读取失败等未决错误，下次获得写锁时重试恢复；不是确认写入失败。
 
 对于缺少哈希的旧 raw manifest，系统不会仅凭 ID 推断成功；需要人工核查。任何自动恢复都不会截断 raw 或移除后来追加的数据。
+
+
+## 显式 raw 生命周期召回
+
+默认冷召回仍不读取 raw。显式传入 `recall.py --include-raw` 时，按已有 `dsh-entry` 的完整正文哈希与 `supersedes` 关系排除已替代/撤销条目，再做排序和预算裁剪。`--include-raw --include-history` 用于审计历史，输出状态标签；不会删除历史。插件对应参数为 `includeRaw` / `includeHistory`。
+
+遇到重复 ID、环、竞争纠错、缺失目标或损坏内容时保守保留证据并输出诊断，不猜测哪个版本正确。普通 Markdown 提炼摘要没有生命周期 ID，因此本次不自动使旧摘要失效。详见 [设计、边界与参考来源](../docs/raw-lifecycle-design.md) 和 [可复现的合成评测](../docs/recall-evaluation.md)。
