@@ -40,6 +40,8 @@
     "assets/banner.jpg",
     "README.md",
     "README.en.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
     "LICENSE"
   ],
   "dsh": {

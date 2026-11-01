@@ -40,6 +40,9 @@ test('packed artifact installs and imports in an empty project', () => {
     ], { cwd: import.meta.dirname, encoding: 'utf8' }))
     assert.equal(packed.length, 1)
     assert.ok(packed[0].files.some(file => file.path === 'docs/memory-system-flowchart.html'))
+    for (const doc of ['CONTRIBUTING.md', 'SECURITY.md']) {
+      assert.ok(packed[0].files.some(file => file.path === doc), `${doc} must be included in the package`)
+    }
     const tarball = join(packDir, packed[0].filename)
 
     writeFileSync(join(consumerDir, 'package.json'), JSON.stringify({
@@ -50,6 +53,9 @@ test('packed artifact installs and imports in an empty project', () => {
     npm([
       'install', '--ignore-scripts', '--no-audit', '--no-fund', '--no-package-lock', tarball,
     ], { cwd: consumerDir, stdio: 'pipe' })
+    for (const doc of ['CONTRIBUTING.md', 'SECURITY.md']) {
+      assert.ok(existsSync(join(consumerDir, 'node_modules', PACKAGE_NAME, doc)), `${doc} must be installed`)
+    }
 
     const result = JSON.parse(execFileSync(process.execPath, [
       '--input-type=module',
