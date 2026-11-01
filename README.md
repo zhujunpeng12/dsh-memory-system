@@ -1,83 +1,137 @@
-<p align="center">
-  <img src="./assets/banner.jpg" alt="DSH Memory System" width="100%">
-</p>
-
-<div align="center">
-
 # dsh-memory-system
 
-**让 DeepSeek Harness 跨会话记住项目、规则和纠正，同时把数据留在本机 Markdown。**
+**让 DeepSeek Harness 下次还能找到你确认过的项目约定，记忆保存在可查看、可备份的本地 Markdown。**
+
+[English](README.en.md) · [首次记忆演示](#先看一次真实的本地闭环) · [安装](#接入-deepseek-harness) · [安全与限制](#安全与限制) · [贡献](CONTRIBUTING.md)
 
 [![CI](https://github.com/zhujunpeng12/dsh-memory-system/actions/workflows/ci.yml/badge.svg)](https://github.com/zhujunpeng12/dsh-memory-system/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/%40zhujunpeng12%2Fdsh-memory-system?label=npm)](https://www.npmjs.com/package/@zhujunpeng12/dsh-memory-system)
-[![DSH](https://img.shields.io/badge/DSH-0.1.0--rc.7-4F46E5)](https://github.com/deepseek-ai/deepseek-harness)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22C55E.svg)](LICENSE)
 
-[English](README.en.md) · [工作原理](#为什么需要它) · [安全边界](#已知限制预期管理) · [参与贡献](CONTRIBUTING.md)
+不用反复解释同一个项目决定，也不用把整个记忆库塞进每次对话：启动时读取有预算的摘要，需要历史细节时再检索，并返回来源。中文检索使用关键词与 bigram BM25，不依赖向量数据库或额外模型 API。
 
-</div>
+- **你能检查它记住了什么**：源文件是普通 Markdown；召回包含文件/行号与匹配线索。
+- **你决定何时保存**：插件写入默认预览，实际执行需确认；治理只给候选，不自动删改。
+- **纠正有记录可追**：本源码版本支持显式 raw 纠正/撤销的有效视图，历史仍保留。不是自动理解所有冲突。
 
-它不是另一个黑盒向量库：启动时只注入有预算的热记忆，需要历史细节时才做可解释的中文 BM25 召回；所有写入默认预览，并通过租约锁、before-image、SHA-256 前置条件和回执保护。默认使用 `~/.dsh-memory/`，无需 Obsidian、数据库、向量服务或外部 API。
+**适合**使用 DSH、主要处理中文项目资料、愿意审阅记忆的个人和小团队。**不适合**需要多租户权限隔离、高频多写者或语义理解保证的场景。独立 Python 检索也可用，不必安装 DSH 或 Obsidian。
 
-> **隐私边界**：仓库只包含机制，不包含任何个人数据。画像、规则、事件和项目笔记始终留在使用者本机；也可用 `MEMORY_VAULT` 指向自己的 Obsidian Vault。
+> **版本说明**：本页描述所在源码分支。首次记忆演示、raw 有效视图与检索评估是尚未包含在已发布 npm `0.1.1` 中的源码改进；源码 `package.json` 仍可能显示 `0.1.1`，不能据此判断功能。下面的 GitHub 安装命令跟随仓库默认分支，**不保证包含这些改进**。运行新增功能须使用包含相关文件的源码检出。
 
-## 30 秒安装
+## 先看一次真实的本地闭环
 
-前提：已安装 DeepSeek Harness `0.1.0-rc.7`，Node.js 22/24 与 Python 3.10+ 可用。
+已有本分支源码？在仓库根目录运行，需 Python 3.10+（某些系统命令为 `python3`）：
 
-```bash
+```sh
+python vault-guard/demo_memory.py
+```
+
+演示使用**合成中文资料和独立临时记忆库**，不读取你的真实 Vault；通过独立进程写入和检索，展示：
+
+1. 将一条合成约定实际写入临时 Markdown，再由新进程读取。演示直接授权合成数据写入，不展示宿主审批。
+2. 默认召回不含 raw；显式开启 raw 后才能找到这条原始记录。
+3. 写入明确的纠正后，有效视图保留新值；审计历史仍能看到新旧记录。
+
+实际输出节选（完整记录见演示指南）：
+
+```text
+1. 记下原始事实：演示项目的发布检查使用蓝色清单。
+5. 当前有效记忆：演示项目的发布检查改为绿色清单。（旧说法已排除）
+6. 历史记录：已替代 = 演示项目的发布检查使用蓝色清单。
+```
+
+这是本地 Python 引擎的可复现演示，**不是已验证的 DSH 新会话或宿主确认弹窗录像**。完整命令、实际输出与清理说明见[首次记忆演示](docs/first-memory-demo.zh-CN.md)。
+
+| 你想做什么 | 入口 |
+| --- | --- |
+| 先确认保存和再读取是否工作 | 上面的临时库演示 |
+| 在 DSH 中使用记忆工具 | 下方插件安装与验证 |
+| 不装宿主，只用本地脚本 | [独立脚本与配置](#独立脚本与配置) |
+| 了解纠正、旧记录与审计的边界 | [raw 生命周期](docs/raw-lifecycle-design.md) |
+
+## 接入 DeepSeek Harness
+
+文档兼容基线：DSH `0.1.0-rc.7`、Node.js 22/24、Python 3.10+。这不是对其他宿主版本的兼容承诺；安装问题见[排障](docs/TROUBLESHOOTING.md)。
+
+```sh
+# 安装仓库默认分支；并非本功能分支的固定快照
 npx @deepseek-ai/dsh plugin --profile web add github:zhujunpeng12/dsh-memory-system
 ```
 
-重启 Harness 后，在新会话让 Agent 运行 `memory_gate`。成功时会看到门禁结果，并且首轮上下文包含 `[vault-bootstrap]`；首次运行会自动创建 `~/.dsh-memory/` 骨架。
+重启 Harness，让 Agent 执行 `memory_gate`。首次使用会创建空的记忆库骨架，**不会凭空生成个人记忆**。插件通过原生 `agent/pre-step` 在每个会话首轮注入 `[vault-bootstrap]` 热包；无需手动配置 hooks。可用 `DSH_MEMORY_AUTO_INJECT=false` 关闭自动注入。
 
-遇到 `Cannot find package`、`ctx.agents` 或热包未注入，请看 [安装故障排查](docs/TROUBLESHOOTING.md)。
+要试用**本源码分支**，在该检出的仓库根目录打包，再本地安装：
 
-<details>
-<summary>AI 代装提示（复制整句给你的 Agent）</summary>
-
-```text
-请把 github:zhujunpeng12/dsh-memory-system 安装到 DeepSeek Harness 的 web profile，重启后运行 memory_gate，并确认新会话收到 [vault-bootstrap]。不要读取或上传任何私人记忆内容。
+```sh
+npm pack
+npx @deepseek-ai/dsh plugin --profile web add ./zhujunpeng12-dsh-memory-system-0.1.1.tgz
 ```
 
-</details>
+本地 tarball 与同版本号的 npm 发布包可能不同；确认打包前存在 `vault-guard/demo_memory.py` 和 `vault-guard/raw_lifecycle.py`。本地引擎测试不能代替目标 DSH 环境的安装验证。
 
-## 为什么选它
+首次真正保存时，让 Agent 先用 `memory_write` 生成预览，检查内容与路径，再确认 `apply=true` 的调用。保存后检查写入回执和来源文件；“已经记住”这句回复不是落盘证据。raw 原始记录不会自动变成热包摘要，必要时显式调用 `memory_recall` 的 `includeRaw=true`，或经确认另行整理为项目/规则笔记。
 
-| 你关心的事 | 本项目的取舍 |
-|---|---|
-| 数据能否直接看懂 | 事实源是本机 Markdown，可用编辑器或 Obsidian 审阅 |
-| 中文历史能否召回 | exact + 中文 bigram BM25 + 标题/路径/项目重排，返回来源和 trace |
-| Agent 会不会乱写记忆 | 写操作默认 dry-run；用户确认后才进入可恢复事务 |
-| 多会话会不会写坏文件 | 单写者租约锁、心跳、崩溃恢复、before-image 与提交回执 |
-| 是否需要模型或数据库服务 | 不需要；默认零后台 LLM、零向量服务、零数据库 |
-| 上下文会不会越积越重 | 热包 ≤14KB、冷包 ≤4.2KB，细节按需打开 |
+## 工具与数据流
 
-**适合**：重视可审计、本地优先、中文召回和写入安全的个人/小团队 DSH 工作流。
+| 工具 | 用途 | 写入边界 |
+| --- | --- | --- |
+| `memory_bootstrap` | 有预算的热包，默认 ≤14KB | 读取记忆 |
+| `memory_recall` | 中文关键词检索，默认冷包 ≤4.2KB，带来源与 trace | 读取记忆；索引是可重建的派生数据 |
+| `memory_gate` | 机械健康检查 | 不修改记忆正文 |
+| `memory_govern` | 重复、冲突、过期等治理候选 | 不自动删改 |
+| `memory_trajectory_review` | 从会话证据中提取复盘候选 | 候选不自动归档 |
+| `memory_write` | raw 追加、替换、恢复 | 默认 dry-run；插件实际写入经确认 |
 
-**不适合**：需要多租户服务端、高频多写者、默认语义向量或全自动无审批记忆写入的场景。
+Markdown 是事实来源，检索索引不是第二份权威记忆。Node 接入宿主，Python 标准库完成本地读写与检索。可选的 `plugins/evidence-ledger/` 提供本地工具账本；不装时复盘只有会话日志中的纠正信号。多 Agent 配套另见 `plugins/agent-teams/`，首次使用无需安装。
 
-## 为什么需要它
+## 独立脚本与配置
 
-Agent 会话之间默认是失忆的。本系统用 **六层机制** 把「记忆」变成可工程化的闭环：
+| 环境变量 | 默认 | 含义 |
+| --- | --- | --- |
+| `MEMORY_VAULT` | `~/.dsh-memory` | 记忆库根目录 |
+| `DSH_HOME` | `~/.dsh` | 宿主会话与运行时存储 |
 
-1. **启动热记忆** — 每个新会话注入一次 ≤14KB 的热包（门禁 + 指令预算 + 用户画像 + 活跃规则 + 项目摘要 + 近期事件标题）
-2. **工作路径** — 按全局/项目 `AGENTS.md` 规则完成任务
-3. **冷层召回** — 双门槛触发（历史引用 + 具体主题），exact + 中文 BM25 + 元数据重排，输出 ≤4.2KB 冷包，向量检索默认关闭（依赖零）
-4. **授权写入** — 租约锁（30s 租约 / 5s 心跳 / 陈旧锁恢复）+ 多文件事务（before-image / SHA-256 前置 / manifest / receipt），raw 机械只追加，纠错必须 supersedes
-5. **慢治理** — `govern.py` 只读扫描重复、冲突、过期、体量、规则生命周期候选，默认不写
-6. **轨迹复盘** — 只读扫描会话轨迹，用「用户纠正」作为硬信号产出复盘候选
+独立使用时先按 [templates/README.md](templates/README.md) 准备记忆库。以下命令在仓库根执行；读取的是配置的记忆库，不是演示临时库：
 
-## 特性亮点
+```sh
+python vault-guard/bootstrap.py --cwd . --max-bytes 14000
+python vault-guard/recall.py --query "上次的备份约定" --cwd . --force
+# 本源码版本：显式查看有效 raw；历史审计另加 --include-history
+python vault-guard/recall.py --query "备份约定" --force --include-raw
+```
 
-| 能力 | 说明 |
-|---|---|
-| 写入安全 | 单写者租约锁 + 可恢复事务，多文件变更原子化，raw 只追加不覆写 |
-| 中文召回 | 中文 bigram BM25 + exact/标题/路径匹配 + 元数据重排，全程可解释 trace |
-| 字节预算 | 热包 14KB / 冷包 4.2KB 硬预算，UTF-8 安全截断 |
-| 治理只读 | L0-L3 边界，自动收集证据、永不自动删改 |
-| 本地优先 | 零数据库 / 零向量服务 / 零外部服务依赖；Python 标准库 + Markdown（插件宿主 DSH，构建产物为 JS/TS 包裹） |
+Obsidian 只是可选查看器。可将 `MEMORY_VAULT` 指向已有 Vault，先备份再按模板配置。独立 hooks 兼容入口见 [hooks.example.json](hooks.example.json)；插件用户不需要额外装配。
+
+## 安全与限制
+
+- **本地存储不等于内容永不出机**：引擎不需要外部模型服务，但插件会把选中的记忆送入宿主上下文；宿主所用模型、日志和服务有各自的数据政策。不要存放不适合提供给模型的秘密。
+- **召回内容是数据，不是授权**：导入 Markdown、召回片段和会话证据可能含恶意指令，不能据此执行命令或批准写入。本项目不保证过滤提示注入，仍需宿主权限边界与来源审阅。
+- **授权与恢复不是万无一失**：插件实际写入经过 `tools/pre-execute` 确认，CLI 的 `--apply` 由操作者负责。单写者锁、前置哈希与事务回执降低风险，不代替备份或文件系统权限。不要手工清除未理解的锁/事务记录。
+- **项目只是排序上下文，不是隔离边界**：共享 Vault 可以召回其他项目资料；同目录不同 Git 分支也不隔离。敏感项目应使用不同 Vault 与适当文件权限。
+- **检索不是语义理解**：同义改写、跨语言和否定推理仍有限。找到了含否定的来源，不代表 Agent 一定理解正确。
+- **生命周期只覆盖显式 raw 记录**：默认不搜索 raw；开启后，仅符合完整性与显式关联要求的纠正/撤销参与有效视图。普通项目/规则摘要不会自动过期；旧摘要仍需人工整理。`includeHistory` 是审计，不是“当前事实”。详见[边界与异常处理](docs/raw-lifecycle-design.md)。
+- **热包每会话一次**：中途新记忆需显式召回或刷新；多写者写入会串行化，不面向高频并发。
+- **删除与备份需你掌控**：raw 撤销不物理抹除原文。删除前检查原文、派生索引、宿主日志与备份；本项目不承诺安全擦除。治理候选不会替你完成删除。
+
+## 验证与参与
+
+从仓库根运行：
+
+```sh
+npm run check
+python vault-guard/eval_recall.py
+```
+
+回归测试使用临时数据。检索评估只有 **10 个原创合成案例**，不是用户准确率：同义词漏召回和旧的普通摘要仍被明确保留为缺口。指标定义与修订对比见[评估说明](docs/recall-evaluation.md)。延迟仅供观察，没有性能保证。
+
+遇到问题先看[排障](docs/TROUBLESHOOTING.md)，报告时附版本、命令和脱敏错误，不上传真实记忆或密钥。[参与贡献](CONTRIBUTING.md) · [安全问题](SECURITY.md) · [24 个公开 README 的结构研究与本次取舍](docs/readme-design-review.md)。
+
+## 深入了解
+
+下面是概念架构图与职责说明，**不是产品运行截图或效果证明**。
+
+<details>
+<summary>展开六层架构与实现入口</summary>
 
 ## 系统架构（六层闭环）
 
@@ -167,7 +221,7 @@ flowchart TD
 
 ### ③ 冷层按需读取 — 需要细节才打开
 
-**做什么**：热包只有摘要，当任务需要证据或细节时，冷召回按需打开完整来源（完整规则、历史 events/raw、项目主笔记、月度索引、session 日志）。
+**做什么**：热包只有摘要，需要细节时再检索规则、事件与项目等来源；返回有预算的证据片段。raw 默认不包含，须显式开启；不要将片段当作完整文件。
 
 **触发**：双门槛——同时满足「历史/上次/纠正等召回信号」+「可检索的具体主题」才触发；纯确认语、复测元指令不打开。
 
@@ -203,147 +257,8 @@ flowchart TD
 
 **怎么用**：`memory_trajectory_review` 工具，或 `python vault-guard/trajectory-review.py --cwd <目录>`。配套安装 `plugins/evidence-ledger/` 才有工具账本数据；多 agent 派发执行件见 `plugins/agent-teams/`（基于 [NanmiCoder/dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) 的增强 fork）。
 
-## 作为 DSH 插件安装（推荐，一行命令）
 
-插件形态把记忆能力直接注册为 Agent 工具，并随 DSH 装配自动生效：
-
-```bash
-# 从 GitHub 直接安装（无需手动配环境/hooks/Vault 目录）
-npx @deepseek-ai/dsh plugin --profile web add github:zhujunpeng12/dsh-memory-system
-
-# 或本地开发安装
-npm pack            # 生成 tarball
-npx @deepseek-ai/dsh plugin --profile web add ./zhujunpeng12-dsh-memory-system-0.1.1.tgz
-```
-
-安装后重启 Harness，Agent 自动获得 6 个记忆工具，且**每个新会话自动注入热记忆包**（index.js 原生监听 pre-step，零手动 hooks 配置；`DSH_MEMORY_AUTO_INJECT=false` 可关闭）：
-
-| 工具 | 作用 | 写操作 |
-|---|---|---|
-| `memory_bootstrap` | 生成 ≤14KB 热记忆包 | 只读 |
-| `memory_recall` | 冷召回（exact + 中文 BM25） | 只读 |
-| `memory_gate` | 机械门禁检查 | 只读 |
-| `memory_govern` | 治理候选扫描 | 只读 |
-| `memory_trajectory_review` | 轨迹复盘候选（用户纠正 = 硬信号） | 只读 |
-| `memory_write` | 授权事务写入（默认 dry-run） | 需确认 |
-
-`memory_write` 默认只预览，`apply=true` 且经用户确认后才落盘；`tools/pre-execute` 钩子会强制弹确认。所有工具通过 `MEMORY_VAULT` / `DSH_HOME` 环境变量定位你的记忆库（不设置则用默认值，见下）。
-
-**轨迹复盘证据层（可选配套）**：`memory_trajectory_review` 依赖工具调用账本（`${DSH_HOME}/storages/tool-telemetry.json`）。安装配套插件 `plugins/evidence-ledger/`（工具账本，零 inject）后，每个会话的工具调用与错误会自动累计，复盘才有数据可扫。不装则复盘只扫 session 日志中的用户纠正信号。
-
-## 快速开始（3 步，装完即用）
-
-### 1. 安装
-
-```bash
-npx @deepseek-ai/dsh plugin --profile web add github:zhujunpeng12/dsh-memory-system
-```
-
-重启 Harness。
-
-### 2. 首次运行自动初始化（无需任何手动配置）
-
-第一次会话自动完成两件事：
-- 在默认位置 `~/.dsh-memory/` 创建记忆库骨架（`memory/{events,index}` + `projects/` + 空 `user_profile.md`/`rules.md`），控制台打印 `已初始化记忆库于 ...`；
-- 该会话首轮自动注入热记忆包（画像/规则/项目摘要/近期事件），开箱即有记忆。
-
-不装 Obsidian 也能完整使用；记忆库是普通本地目录（Python 标准库 + Markdown，零外部依赖）。
-
-### 3. 验证
-
-让 Agent 执行 `memory_gate`（机械门禁检查）确认链路正常；之后每次会话自动带热包，需要细节时 Agent 会用 `memory_recall` 冷召回。
-
-### Vault 模式（可选）
-
-想用 Obsidian 可视化时，设置环境变量指向你的 Vault，重启后记忆切换到 Vault：
-
-| 变量 | 默认值 | 说明 |
-|---|---|---|
-| `MEMORY_VAULT` | `~/.dsh-memory` | 记忆库根目录（含 `memory/` 与 `projects/`） |
-| `DSH_HOME` | `~/.dsh` | DSH 家目录（hooks 配置、storages 等） |
-
-```powershell
-$env:MEMORY_VAULT = "C:\Users\you\Documents\Obsidian Vault"
-```
-
-Vault 模式下把 `templates/vault/` 骨架复制到你的 Vault（见 `templates/README.md`）。
-
-### 独立脚本用法（不装插件时）
-
-```powershell
-python vault-guard\bootstrap.py --cwd "C:\path\to\project" --max-bytes 14000   # 热包
-python vault-guard\recall.py --query "继续上次的XXX" --cwd "C:\path\to\project" --force  # 冷召回
-```
-
-> 手动 hooks（可选，仅独立脚本用法需要）：参考 `hooks.example.json` 把 `hook-first-prompt.py` 挂到 `UserPromptSubmit`；插件用法已内置自动注入，无需此步。`DSH_HOME` 环境变量仍用于定位 DSH 运行时存储（storages/sessions 等），脚本自身互相调用则用包内相对路径——插件装到哪里都能跑，无需把 vault-guard 复制到 `$DSH_HOME`。
-
-## 目录结构
-
-```
-├── index.js                    # DSH host 插件：6 个记忆工具 + 写操作护栏
-├── package.json                # npm 包声明（dsh-memory-system）
-├── dsh.plugin.json             # DSH 插件 manifest
-├── cordis.patch.yml            # DSH bundle 装配补丁
-├── vault-guard/
-│   ├── bootstrap.py            # 热记忆包生成（≤14KB）
-│   ├── hook-first-prompt.py    # UserPromptSubmit hooks：按 session 注入一次热包 + 冷包触发
-│   ├── hook-session-start.py   # SessionStart 兼容桥（当前默认不启用）
-│   ├── recall.py               # 冷召回：exact + 中文 BM25 + 元数据重排
-│   ├── recall_trigger.py       # 召回信号双门槛判断
-│   ├── check.py                # 机械门禁（开场/收尾检查）
-│   ├── sync-core.py            # rules.md → rules-core.md 事务同步
-│   ├── vault_lock.py           # 30s 租约 / 5s 心跳单写者锁
-│   ├── vault-lock.py           # 锁的兼容 CLI（acquire/release/status）
-│   ├── vault_tx.py             # 可恢复事务：before-image/哈希前置/manifest/receipt
-│   ├── vault-write.py          # 授权写入 CLI（raw 只追加，dry-run 默认）
-│   ├── rule-cite.py            # 规则引用计数（dry-run 默认）
-│   ├── govern.py               # 只读治理扫描（重复/冲突/过期/体量/生命周期）
-│   ├── trajectory-review.py    # 轨迹复盘候选（用户纠正 = 硬信号）
-│   └── test_*.py               # 回归测试（unittest，无外部依赖）
-├── plugins/
-│   ├── evidence-ledger/        # 配套插件：工具调用账本（轨迹复盘证据层）
-│   └── agent-teams/            # 配套插件：多 agent 团队编排（增强 fork，复盘派发执行件）
-├── templates/                  # 脱敏记忆库骨架（10 分钟搭出自己的记忆系统）
-├── hooks.example.json          # DSH hooks 装配示例
-├── .env.example                # 环境变量示例
-└── LICENSE
-```
-
-## 运行测试
-
-```powershell
-# Python 引擎测试
-cd vault-guard
-python -m unittest discover -p "test_*.py" -v
-
-# JS 契约测试（工具参数 → CLI argv 映射，仓库根执行）
-node --test test_plugin_bridge.test.mjs
-# 或一次性跑全量（等价 CI）
-npm run check
-```
-
-测试全部使用临时目录，不触碰真实记忆库。
-
-## 已知限制（预期管理）
-
-- **`memory_write` 默认是 dry-run（预览）**：不显式 `apply=true` 且经用户确认，**不落盘**。「Agent 说记下了」≠ 真写入了——需要时用 `memory_gate`/查看 events 文件确认。
-- **冷召回是 BM25 关键词检索，不是语义向量**：适合精确/近精确匹配（专有名词、代码、日期、明确主题），对同义改写、长尾表达、跨语言召回有限；向量检索默认关闭（零依赖代价）。
-- **单写者租约锁**：同一记忆库同一时刻只有一个写者，多 Agent 并发写会串行化（等锁）。不适合多 Agent 高频同时写同一个记忆库——多写者场景请拆分记忆库或错峰。
-- **项目隔离仅按 cwd 祖先匹配，无 git 分支感知**：同一目录的不同 git 分支共享同一记忆库，分支间的记忆会互相可见。分支级隔离在路线图中（见下）。
-- **热包按会话注入一次**：会话中途的「新增记忆」不会自动进当前会话热包，需要时显式调用 `memory_recall`/`memory_bootstrap` 刷新。
-- **轨迹复盘的定量维度依赖配套插件**：不装 `plugins/evidence-ledger/` 时只扫 session 日志中的用户纠正信号（定性），无工具账本数据。
-
-## 路线图
-
-- git 分支感知：记忆可绑定「仅在某分支生效」（对齐 dsh-memory-evolve 的分支隔离能力）
-- 语义召回作为可选通道（默认仍保持零依赖 BM25）
-- 多写者并发优化（当前单写者锁是正确性优先的设计取舍）
-
-## 使用约定（方法论）
-
-- **单一真相源**：一条事实只有一个家（运行参数 → AGENTS.md；决策历史 → 项目笔记；当日流水 → events；跨项目经验 → rules），其他位置只放指针
-- **写入授权**：所有写操作先 dry-run 预览，明确授权后才 `--apply`；raw 只追加，纠错用 supersedes 而非覆写
-- **治理默认只读**：`govern.py` 只收集证据和建议，晋升/归档/删除永远需要人确认
+</details>
 
 ## 许可证
 
@@ -359,8 +274,3 @@ MIT — 详见 [LICENSE](LICENSE)。版权所有 © 2026 [zhujunpeng12](https://
 MIT 许可不强制这些，但你的致谢是对开源最实在的回馈。
 
 **上游致谢**：本仓库「轨迹复盘 → 多 agent 派发解决」的方法论受益于 [NanmiCoder/dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)（MIT 许可）——一个为 DeepSeek Harness 提供多 agent 团队编排的插件。本仓库在其基础上实践并沉淀的增强方向：需求确认单门禁（brief 提交 + 面板确认 + 派活拦截）、编排纠错（依赖可改 / 队长可认领）、队长协议（渐进式验收 / 依赖三问 / 文件所有权 / 追加需求建任务）、UI 状态机（波纹相位 / 待命橙色态）等，供同样做多 agent 编排的同仁参考。感谢原作者的贡献。
-
-## 免责声明
-
-- 本仓库不含任何个人数据；记忆内容始终留在使用者本地
-- 使用前请自行审查：部署前确认你的记忆库结构、hooks 装配与安全边界

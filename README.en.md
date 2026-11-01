@@ -1,83 +1,137 @@
-<p align="center">
-  <img src="./assets/banner.jpg" alt="DSH Memory System" width="100%">
-</p>
-
-<div align="center">
-
 # dsh-memory-system
 
-**Give DeepSeek Harness cross-session memory while keeping every fact in local Markdown.**
+**Help DeepSeek Harness find the project decisions you approved next time—with memory stored in inspectable, backup-friendly local Markdown.**
+
+[简体中文](README.md) · [First memory](#see-a-local-round-trip-first) · [Install](#connect-to-deepseek-harness) · [Safety and limits](#safety-and-limits) · [Contribute](CONTRIBUTING.md)
 
 [![CI](https://github.com/zhujunpeng12/dsh-memory-system/actions/workflows/ci.yml/badge.svg)](https://github.com/zhujunpeng12/dsh-memory-system/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/%40zhujunpeng12%2Fdsh-memory-system?label=npm)](https://www.npmjs.com/package/@zhujunpeng12/dsh-memory-system)
-[![DSH](https://img.shields.io/badge/DSH-0.1.0--rc.7-4F46E5)](https://github.com/deepseek-ai/deepseek-harness)
-[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22C55E.svg)](LICENSE)
 
-[中文](README.md) · [How it works](#why) · [Safety boundaries](#known-limitations-expectation-management) · [Contributing](CONTRIBUTING.md)
+Avoid repeating the same project decisions without putting your entire archive into every conversation. Load a bounded summary at startup, retrieve details when needed, and inspect the sources. Chinese keyword and bigram BM25 retrieval needs no vector database or additional model API.
 
-</div>
+- **Inspect what was remembered:** ordinary Markdown sources, with file/line citations and retrieval reasons.
+- **Choose what gets saved:** plugin writes preview first and require confirmation to apply; governance proposes rather than silently edits.
+- **Keep a correction trail:** this source version supports an effective view of explicitly corrected/revoked raw records while retaining history. It does not infer every contradiction.
 
-This is not another opaque vector store. It injects a bounded hot packet at session start, opens historical details only through explainable Chinese-aware BM25 recall, and previews every write before a lease-locked recoverable transaction. The default store is `~/.dsh-memory/`; Obsidian, a database, vector service, and external APIs are all optional—not requirements.
+**For:** individual and small-team DSH users working with Chinese project material who want to review their memories. **Not for:** multi-tenant access isolation, high-frequency concurrent writers, or guaranteed semantic understanding. Standalone Python retrieval also works without DSH or Obsidian.
 
-> **Privacy boundary:** this repository ships mechanisms, never personal data. Profiles, rules, events, and project notes remain on your machine. Set `MEMORY_VAULT` only when you want to use your own Obsidian Vault.
+> **Version scope:** this page describes its source branch. The first-memory demo, effective raw view and retrieval evaluation are source improvements **not included in published npm `0.1.1`**. Source `package.json` may still say `0.1.1`; that number alone does not identify these capabilities. The GitHub install command below follows the repository default branch and **does not guarantee these improvements**. Use a source checkout containing the relevant files for the new features.
 
-## Install in 30 seconds
+## See a local round trip first
 
-Prerequisites: DeepSeek Harness `0.1.0-rc.7`, Node.js 22/24, and Python 3.10+.
+Already have this source branch? Run from the repository root with Python 3.10+ (`python3` on some systems):
 
-```bash
+```sh
+python vault-guard/demo_memory.py --lang en
+```
+
+The demo uses **synthetic Chinese data in a separate temporary Vault**, not your real memories. Separate writer and reader processes demonstrate:
+
+1. Persist a synthetic decision to temporary Markdown, then read it from a fresh process. The demo directly authorizes synthetic writes; it does not demonstrate host approval.
+2. Default recall excludes raw records; explicitly enabling raw reveals the saved record.
+3. An explicit correction leaves the new value in the effective view; audit history still exposes both records.
+
+Excerpt from the generated output (full transcript in the walkthrough):
+
+```text
+1. Remembered raw fact: 演示项目的发布检查使用蓝色清单。
+5. Effective raw recall: 演示项目的发布检查改为绿色清单。 (old fact excluded)
+6. History: superseded = 演示项目的发布检查使用蓝色清单。
+```
+
+This is a reproducible local Python-engine demo, **not a verified DSH new-session or approval-dialog recording**. See [first-memory walkthrough](docs/first-memory-demo.en.md) for commands, actual output and cleanup behavior.
+
+| Your goal | Start here |
+| --- | --- |
+| Check persistence and subsequent retrieval | Temporary-Vault demo above |
+| Use memory tools inside DSH | Plugin setup below |
+| Use local scripts without the host | [Standalone scripts and configuration](#standalone-scripts-and-configuration) |
+| Understand corrections, old evidence and audit mode | [Raw lifecycle design](docs/raw-lifecycle-design.md) |
+
+## Connect to DeepSeek Harness
+
+Documented compatibility baseline: DSH `0.1.0-rc.7`, Node.js 22/24, Python 3.10+. This is not a compatibility promise for other host versions. See [troubleshooting](docs/TROUBLESHOOTING.md).
+
+```sh
+# Installs the repository default branch, not a pinned snapshot of this feature branch
 npx @deepseek-ai/dsh plugin --profile web add github:zhujunpeng12/dsh-memory-system
 ```
 
-Restart Harness, then ask the agent to run `memory_gate` in a new session. A healthy install returns the gate result and injects `[vault-bootstrap]`; the first run creates the `~/.dsh-memory/` skeleton automatically.
+Restart Harness and ask the agent to run `memory_gate`. First use creates an empty Vault skeleton; **it does not invent personal memories**. The native `agent/pre-step` hook injects a `[vault-bootstrap]` packet on the first step of each session. No manual hooks setup is needed; `DSH_MEMORY_AUTO_INJECT=false` disables automatic injection.
 
-For `Cannot find package`, `ctx.agents`, Python, or missing-bootstrap errors, see [Installation troubleshooting](docs/TROUBLESHOOTING.md).
+To try **this source branch**, package that checkout from its repository root, then install locally:
 
-<details>
-<summary>Copy-paste prompt for AI-assisted installation</summary>
-
-```text
-Install github:zhujunpeng12/dsh-memory-system into the DeepSeek Harness web profile, restart it, run memory_gate, and verify that a new session receives [vault-bootstrap]. Do not read or upload any private memory content.
+```sh
+npm pack
+npx @deepseek-ai/dsh plugin --profile web add ./zhujunpeng12-dsh-memory-system-0.1.1.tgz
 ```
 
-</details>
+A local tarball can differ from the published npm package with the same version. Check for `vault-guard/demo_memory.py` and `vault-guard/raw_lifecycle.py` before packing. Engine tests do not replace installation verification in your target DSH environment.
 
-## Why this one
+For the first real memory, ask the agent to preview `memory_write`, inspect the content and path, then confirm the call with `apply=true`. Check the receipt and source file afterward: an agent saying “remembered” is not persistence evidence. Raw records do not automatically become hot summaries; explicitly use `memory_recall` with `includeRaw=true` when needed, or separately approve a curated project/rule note.
 
-| What you care about | Design choice |
-|---|---|
-| Can I inspect my data? | Local Markdown is the source of truth; review it in any editor or Obsidian |
-| Does Chinese recall work? | Exact + CJK bigram BM25 + title/path/project rerank, with sources and trace |
-| Can the agent silently rewrite memory? | Writes are dry-run by default and require user confirmation |
-| Can concurrent sessions corrupt files? | Single-writer lease, heartbeat, crash recovery, before-images, and receipts |
-| Do I need a model/database service? | No background LLM, vector service, or database is required |
-| Will memory consume the whole context? | Hot packet ≤14KB, cold packet ≤4.2KB, details on demand |
+## Tools and data flow
 
-**Best for:** individuals and small teams that value auditability, local ownership, Chinese recall, and safe writes.
+| Tool | Purpose | Write boundary |
+| --- | --- | --- |
+| `memory_bootstrap` | Bounded hot context, default ≤14KB | Reads memories |
+| `memory_recall` | Chinese keyword retrieval, default packet ≤4.2KB, sources and trace | Reads memories; index is rebuildable derived data |
+| `memory_gate` | Mechanical health checks | Does not edit memory bodies |
+| `memory_govern` | Duplicate, conflict and expiry candidates | No automatic edits/deletions |
+| `memory_trajectory_review` | Review candidates from session evidence | No automatic archival |
+| `memory_write` | Raw append, replace and recovery | Dry-run by default; applied plugin writes require confirmation |
 
-**Not for:** server-side multi-tenancy, high-frequency multi-writer workloads, vector-first semantic retrieval, or fully autonomous unapproved memory writes.
+Markdown is the source of truth; the index is not a second authoritative memory. Node connects to the host; Python's standard library handles local storage and retrieval. Optional `plugins/evidence-ledger/` supplies a local tool ledger; without it, review uses correction signals in session logs only. The companion `plugins/agent-teams/` is not required for first use.
 
-## Why
+## Standalone scripts and configuration
 
-Agent sessions are amnesic by default. This system turns "memory" into an engineering loop with six layers:
+| Environment variable | Default | Purpose |
+| --- | --- | --- |
+| `MEMORY_VAULT` | `~/.dsh-memory` | Memory root directory |
+| `DSH_HOME` | `~/.dsh` | Host session/runtime storage |
 
-1. **Hot-memory bootstrap** — one ≤14KB packet injected per new session (gate status + instruction budget + user profile + active core rules + project summary + recent event headings)
-2. **Working path** — follow global/project `AGENTS.md` rules to complete tasks
-3. **Cold recall** — two-gate trigger (history reference + concrete topic), exact + Chinese bigram BM25 + metadata rerank, ≤4.2KB packet, vector retrieval off by default (zero deps)
-4. **Authorized writes** — lease lock (30s lease / 5s heartbeat / stale-lock recovery) + multi-file transactions (before-image / SHA-256 precondition / manifest / receipt); raw entries are append-only; corrections require `supersedes`
-5. **Slow governance** — `govern.py` read-only scan for duplicates, conflicts, staleness, size, rule lifecycle; never writes
-6. **Trajectory review** — read-only scan of session traces using user corrections as the hard signal
+For standalone use, prepare a Vault using [templates/README.md](templates/README.md). Run these commands from the repository root; they read your configured Vault, **not** the demo's temporary Vault:
 
-## Highlights
+```sh
+python vault-guard/bootstrap.py --cwd . --max-bytes 14000
+python vault-guard/recall.py --query "上次的备份约定" --cwd . --force
+# This source version: effective raw view; add --include-history for an audit
+python vault-guard/recall.py --query "备份约定" --force --include-raw
+```
 
-| Capability | Description |
-|---|---|
-| Write safety | Single-writer lease lock + recoverable transactions, atomic multi-file changes, append-only raw |
-| Chinese recall | Bigram BM25 + exact/title/path match + metadata rerank, fully explainable trace |
-| Byte budgets | 14KB hot / 4.2KB cold hard budgets, UTF-8-safe clipping |
-| Read-only governance | L0-L3 boundaries; collects evidence, never auto-deletes |
-| Local-first | Zero database / vector service / external service; Python stdlib + Markdown (DSH plugin host, JS/TS wrapper build) |
+Obsidian is an optional viewer. You may point `MEMORY_VAULT` at an existing Vault; back it up before configuring templates. Legacy standalone hooks are documented in [hooks.example.json](hooks.example.json); plugin users do not need them.
+
+## Safety and limits
+
+- **Local storage does not mean content never leaves your device.** The engine needs no external model service, but the plugin passes selected memories into host context. Your host, model and logging services have their own data policies. Do not store secrets unsuitable for model input.
+- **Retrieved content is data, not authority.** Imported Markdown, recalled snippets and session evidence may contain malicious instructions. They do not authorize commands or writes. This project does not guarantee prompt-injection filtering; retain host permission boundaries and review sources.
+- **Approval and recovery are not infallible.** Applied plugin writes use `tools/pre-execute` confirmation; CLI users are responsible for `--apply`. Single-writer locks, precondition hashes and transaction receipts reduce risk, not the need for backups or filesystem permissions. Do not clear locks/transaction records you do not understand.
+- **Project context is ranking, not isolation.** A shared Vault can return other projects' evidence; Git branches in the same directory are not isolated. Use separate Vaults and appropriate permissions for sensitive projects.
+- **Retrieval is not semantic understanding.** Paraphrases, cross-language queries and negation reasoning remain limited. Retrieving a source containing negation does not prove correct interpretation.
+- **Lifecycle handling is explicit and raw-only.** Default recall excludes raw. When enabled, only corrections/revocations satisfying integrity and explicit-link rules affect the effective view. Ordinary project/rule summaries are not automatically retired. `includeHistory` is for audit, not a declaration of current truth. See [ambiguity and failure handling](docs/raw-lifecycle-design.md).
+- **Hot context loads once per session.** Recall or bootstrap explicitly to refresh after new writes. Writers serialize; this is not a high-concurrency store.
+- **You control deletion and backup.** Revoking a raw fact does not physically erase its source. Review original files, derived indexes, host logs and backups when deleting sensitive content. There is no secure-erasure guarantee; governance candidates do not perform deletion for you.
+
+## Verify and contribute
+
+From the repository root:
+
+```sh
+npm run check
+python vault-guard/eval_recall.py
+```
+
+Regression tests use temporary data. Retrieval evaluation contains only **10 original synthetic cases**, not real-user accuracy measurements. It deliberately retains a paraphrase miss and a stale curated-summary case. See [metric definitions and revision comparisons](docs/recall-evaluation.md). Latency is informational, not a performance guarantee.
+
+Start with [troubleshooting](docs/TROUBLESHOOTING.md); report versions, commands and sanitized errors, not private memories or keys. [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [24-source README design review](docs/readme-design-review.md).
+
+## Under the hood
+
+The following is a conceptual architecture diagram and responsibility guide, **not a product screenshot or evidence of runtime results**.
+
+<details>
+<summary>Expand the six-layer architecture and implementation guide</summary>
 
 ## System architecture (six-layer closed loop)
 
@@ -149,35 +203,6 @@ Legend: solid = scripted execution; dashed = on-demand read / human review; diam
 
 </details>
 
-## Install as a DSH plugin (recommended, one command)
-
-The plugin form registers memory capabilities directly as agent tools:
-
-```bash
-# Install straight from GitHub (no manual env/hooks/vault setup)
-npx @deepseek-ai/dsh plugin --profile web add github:zhujunpeng12/dsh-memory-system
-
-# or local development:
-npm pack && npx @deepseek-ai/dsh plugin --profile web add ./zhujunpeng12-dsh-memory-system-0.1.1.tgz
-```
-
-Restart the Harness. The agent gains 6 tools, and **every new session gets the hot-memory packet injected automatically** (native pre-step listener in index.js — zero manual hooks configuration; disable with `DSH_MEMORY_AUTO_INJECT=false`):
-
-| Tool | Purpose | Writes |
-|---|---|---|
-| `memory_bootstrap` | ≤14KB hot-memory packet | read-only |
-| `memory_recall` | cold recall (exact + Chinese BM25) | read-only |
-| `memory_gate` | mechanical gate checks | read-only |
-| `memory_govern` | governance candidate scan | read-only |
-| `memory_trajectory_review` | trajectory review candidates (user corrections = hard signal) | read-only |
-| `memory_write` | authorized transactional write (dry-run default) | confirmed |
-
-`memory_write` only previews by default; it applies only with `apply=true` after explicit user confirmation (enforced via the `tools/pre-execute` hook). All tools locate your vault via `MEMORY_VAULT` / `DSH_HOME`.
-
-**Trajectory review evidence layer (optional companion)**: `memory_trajectory_review` reads the tool-call ledger (`${DSH_HOME}/storages/tool-telemetry.json`). Install the companion plugin `plugins/evidence-ledger/` (zero inject) to accumulate per-session tool calls and errors automatically. Without it, the review still scans session logs for user-correction signals.
-
-> Optional manual hooks (standalone script usage only): see `hooks.example.json` to attach `hook-first-prompt.py` to `UserPromptSubmit`. The plugin form injects automatically — this step is not needed.
-
 ## Six layers in detail (what each layer does)
 
 ### ① Hot-memory bootstrap — one bounded context per session
@@ -196,7 +221,7 @@ Restart the Harness. The agent gains 6 tools, and **every new session gets the h
 
 ### ③ Cold layer on demand — open details only when needed
 
-**What**: when a task needs evidence or details, cold recall opens full sources (complete rules, historical events/raw, project notes, monthly index, session logs).
+**What**: when a task needs evidence or details, cold recall searches rule, event and project sources and returns bounded evidence snippets with citations—not complete files. Raw records are excluded unless explicitly enabled. Do not assume that all historical or session material is searched.
 
 **Trigger**: two gates — a recall signal (history/last time/correction) **and** a concrete searchable topic, both required. Plain acknowledgements or meta-only follow-ups do not open cold memory.
 
@@ -232,102 +257,8 @@ Restart the Harness. The agent gains 6 tools, and **every new session gets the h
 
 **How**: `memory_trajectory_review` tool, or `python vault-guard/trajectory-review.py --cwd <dir>`. Install `plugins/evidence-ledger/` for ledger data.
 
-## Quick start (3 steps, works out of the box)
 
-### 1. Install
-
-```bash
-npx @deepseek-ai/dsh plugin --profile web add github:zhujunpeng12/dsh-memory-system
-```
-
-Restart the Harness.
-
-### 2. First run auto-initializes (no manual setup)
-
-The first session automatically:
-- creates the memory skeleton at `~/.dsh-memory/` (`memory/{events,index}` + `projects/` + empty `user_profile.md`/`rules.md`), printing `已初始化记忆库于 ...`;
-- injects the hot-memory packet on the first prompt (profile/rules/project summary/recent events) — usable memory from the very first session.
-
-No Obsidian needed. The vault is a plain local directory (Python stdlib + Markdown, zero external deps).
-
-### 3. Verify
-
-Ask the agent to run `memory_gate` (mechanical gate checks) to confirm the pipeline. Afterwards every session carries the hot packet automatically; `memory_recall` is used on demand for details.
-
-### Vault mode (optional)
-
-To use Obsidian for visualization, point `MEMORY_VAULT` at your vault and restart:
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `MEMORY_VAULT` | `~/.dsh-memory` | Vault root (must contain `memory/` and `projects/`) |
-| `DSH_HOME` | `~/.dsh` | DSH home (hooks config, storages) |
-
-```powershell
-$env:MEMORY_VAULT = "C:\Users\you\Documents\Obsidian Vault"
-```
-
-Copy the `templates/vault/` skeleton into your vault (see `templates/README.md`).
-
-### Standalone script usage (without the plugin)
-
-```bash
-python vault-guard/bootstrap.py --cwd /path/to/project --max-bytes 14000   # hot packet
-python vault-guard/recall.py --query "continue the previous X" --cwd /path/to/project --force  # cold recall
-```
-
-## Repository layout
-
-```
-├── index.js                    # DSH host plugin: 6 memory tools + hot-packet auto-inject + write guard
-├── package.json                # npm package (dsh-memory-system)
-├── dsh.plugin.json             # DSH plugin manifest
-├── cordis.patch.yml            # DSH bundle patch
-├── vault-guard/                # Python core (bootstrap/recall/gate/govern/write/...)
-├── templates/                  # sanitized memory-vault skeleton
-├── hooks.example.json          # DSH hooks example
-├── .env.example
-└── LICENSE                     # MIT
-```
-
-## Run tests
-
-```bash
-# Python engine tests
-cd vault-guard && python -m unittest discover -p "test_*.py" -v
-
-# JS contract tests (tool args → CLI argv mapping; run from repo root)
-node --test test_plugin_bridge.test.mjs
-# or everything at once (CI-equivalent):
-npm run check
-```
-
-All tests use temporary directories; they never touch a real vault.
-
-## Known limitations (expectation management)
-
-- **`memory_write` is dry-run by default**: nothing is written unless `apply=true` is explicitly set and the user confirms. "The agent said it remembered" does not mean it was persisted — verify with `memory_gate` or by checking the events files.
-- **Cold recall is BM25 keyword retrieval, not semantic vectors**: best for exact/near-exact matches (proper nouns, code, dates, concrete topics); weak on paraphrases, long-tail phrasing, and cross-language recall. Vector retrieval is off by default (the cost of zero dependencies).
-- **Single-writer lease lock**: only one writer at a time per memory vault; concurrent multi-agent writes serialize (queue for the lock). Not suited for many agents writing the same vault at high frequency — split vaults or stagger writes.
-- **Project isolation is cwd-ancestor matching only, no git-branch awareness**: different git branches of the same directory share the same memory; branch-specific memory is not separated. Branch-level isolation is on the roadmap (below).
-- **Hot packet is injected once per session**: mid-session memory writes do not auto-refresh the current session's packet; call `memory_recall` / `memory_bootstrap` explicitly when needed.
-- **The quantitative dimension of trajectory review depends on the companion plugin**: without `plugins/evidence-ledger/`, the review scans session logs for user-correction signals (qualitative) only — no tool-ledger data.
-
-## Roadmap
-
-- Git-branch awareness: memory bound to "only effective on a given branch" (aligning with dsh-memory-evolve's branch isolation)
-- Semantic recall as an optional channel (keeping zero-dependency BM25 as default)
-- Multi-writer concurrency improvements (the single-writer lock is a correctness-first design choice today)
-
-## Methodology (the philosophy)
-
-- **Single source of truth**: one fact, one home (runtime params → AGENTS.md; decisions → project notes; daily flow → events; cross-project lessons → rules). Everywhere else holds pointers only.
-- **Write authorization**: preview first, `--apply` only with explicit consent; raw append-only; corrections via `supersedes`.
-- **Governance is read-only**: `govern.py` collects evidence and suggestions; promotion/archive/deletion always requires a human.
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: see [SECURITY.md](SECURITY.md).
+</details>
 
 ## License
 
@@ -343,8 +274,3 @@ This project is created and maintained by [zhujunpeng12](https://github.com/zhuj
 MIT does not require any of this, but your acknowledgement is the most tangible return for open source.
 
 **Upstream acknowledgement**: the "trajectory review → multi-agent dispatch" methodology in this repository builds on [NanmiCoder/dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) (MIT) — a multi-agent team orchestration plugin for DeepSeek Harness. Enhancements practiced and distilled on top of it here: demand-brief gating (brief submission + panel confirmation + dispatch blocking), orchestration correction (editable dependencies / captain self-claim), captain protocol (progressive acceptance / dependency triple-check / file ownership / new-demand-as-task), and UI state machines (ripple phases / queued amber state). Thanks to the original author.
-
-## Disclaimer
-
-- This repository contains no personal data; memory content stays on the user's machine.
-- Review your vault layout, hooks wiring, and security boundaries before deploying.

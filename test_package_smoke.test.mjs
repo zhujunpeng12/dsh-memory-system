@@ -61,6 +61,17 @@ test('packed artifact installs and imports in an empty project', () => {
       inject: ['tools', 'agents'],
       apply: 'function',
     })
+
+    // Exercise the shipped CLI and support files, not a checkout-only demo.
+    const demo = JSON.parse(execFileSync(process.env.PYTHON || 'python', [
+      join(consumerDir, 'node_modules', PACKAGE_NAME, 'vault-guard', 'demo_memory.py'), '--json',
+    ], { cwd: consumerDir, encoding: 'utf8', timeout: 30_000 }))
+    assert.equal(demo.synthetic, true)
+    assert.equal(demo.configured_user_vault_used, false)
+    assert.equal(demo.live_dsh_host_tested, false)
+    assert.equal(demo.default_recall.hits, 0)
+    assert.equal(demo.effective_recall.old_fact_visible, false)
+    assert.equal(demo.temporary_vault_removed, true)
   } finally {
     rmSync(root, { recursive: true, force: true })
   }
