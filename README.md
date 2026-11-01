@@ -16,7 +16,7 @@
 
 **适合**使用 DSH、主要处理中文项目资料、愿意审阅记忆的个人和小团队。**不适合**需要多租户权限隔离、高频多写者或语义理解保证的场景。独立 Python 检索也可用，不必安装 DSH 或 Obsidian。
 
-> **版本说明**：本页描述所在源码分支。首次记忆演示、raw 有效视图与检索评估是尚未包含在已发布 npm `0.1.1` 中的源码改进；源码 `package.json` 仍可能显示 `0.1.1`，不能据此判断功能。下面的 GitHub 安装命令跟随仓库默认分支，**不保证包含这些改进**。运行新增功能须使用包含相关文件的源码检出。
+> **版本说明**：本页描述所在源码分支。2026-11-01 查验 [npm registry](https://registry.npmjs.org/@zhujunpeng12%2Fdsh-memory-system)，当前 `latest` 和唯一已发布版本均为 `0.1.0`；本源码 `package.json` 为 `0.1.1`，**不代表 npm 已发布 0.1.1**。首次记忆演示、raw 有效视图与检索评估需使用包含相关文件的源码检出。下面的 GitHub 安装命令跟随仓库默认分支，**不保证包含这些改进**。
 
 ## 先看一次真实的本地闭环
 
@@ -67,7 +67,7 @@ npm pack
 npx @deepseek-ai/dsh plugin --profile web add ./zhujunpeng12-dsh-memory-system-0.1.1.tgz
 ```
 
-本地 tarball 与同版本号的 npm 发布包可能不同；确认打包前存在 `vault-guard/demo_memory.py` 和 `vault-guard/raw_lifecycle.py`。本地引擎测试不能代替目标 DSH 环境的安装验证。
+此处 `0.1.1.tgz` 是由源码版本号生成的本地包，不是已核实的 npm 发布包；确认打包前存在 `vault-guard/demo_memory.py` 和 `vault-guard/raw_lifecycle.py`。本地引擎测试不能代替目标 DSH 环境的安装验证。
 
 首次真正保存时，让 Agent 先用 `memory_write` 生成预览，检查内容与路径，再确认 `apply=true` 的调用。保存后检查写入回执和来源文件；“已经记住”这句回复不是落盘证据。raw 原始记录不会自动变成热包摘要，必要时显式调用 `memory_recall` 的 `includeRaw=true`，或经确认另行整理为项目/规则笔记。
 
