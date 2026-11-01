@@ -1,0 +1,10 @@
+SYNTHETIC MEMORY DEMO (real CLI, fresh Python processes; no live DSH host)
+1. Remembered raw fact: 演示项目的发布检查使用蓝色清单。
+2. Fresh-process default recall: 0 hits (raw is excluded by default)
+3. Explicit raw recall: 演示项目的发布检查使用蓝色清单。
+4. Appended correction: 演示项目的发布检查改为绿色清单。
+5. Effective raw recall: 演示项目的发布检查改为绿色清单。 (old fact excluded)
+6. History: superseded = 演示项目的发布检查使用蓝色清单。
+   History: active = 演示项目的发布检查改为绿色清单。
+7. Original raw bytes preserved; temporary Vault removed.
+PASS: synthetic walkthrough only. No user Vault, model API or DSH host was used.

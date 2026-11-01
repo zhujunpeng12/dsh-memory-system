@@ -2,14 +2,18 @@
 
 This page covers plugin loading and first-run failures. It never asks you to upload memory files, credentials, or private paths.
 
-## Supported baseline
+## Documented compatibility baseline
 
-| Component | Supported/tested baseline |
+| Component | Documented baseline |
 |---|---|
 | DeepSeek Harness | `0.1.0-rc.7` |
 | Node.js | 22 or 24 |
 | Python | 3.10+ available as `python`, or set `PYTHON` |
 | Storage | `~/.dsh-memory/` by default; optional `MEMORY_VAULT` override |
+
+This is the documented compatibility target, not evidence that every listed combination was tested against a live DSH host. Local CLI demos, mocked plugin contract tests and package checks do not verify live session injection or approval dialogs. Verify installation and behavior in your target host environment.
+
+The GitHub command below follows the default branch. Source-only demo and raw-lifecycle improvements described on a feature branch are not necessarily present there or in the published npm `0.1.0` package; inspect the checkout and its version notes. On 2026-11-01, the [npm registry](https://registry.npmjs.org/@zhujunpeng12%2Fdsh-memory-system) listed only `0.1.0`; the source version `0.1.1` is not evidence of an npm release.
 
 ## Clean install or upgrade
 
@@ -26,7 +30,7 @@ Restart the `web` profile after install. Do not copy `index.js` or edit the gene
 
 Cause in 0.1.0-era GitHub installs: the bundle patch used an unscoped loader name even though the installed package is `@zhujunpeng12/dsh-memory-system`.
 
-Fix: install 0.1.1 or later (or current GitHub `master`) and confirm `cordis.patch.yml` contains:
+Fix: use a source checkout containing the scoped-loader fix, install its locally packed tarball, and confirm `cordis.patch.yml` contains:
 
 ```yaml
 name: '@zhujunpeng12/dsh-memory-system'
@@ -38,13 +42,13 @@ If the error persists, remove the package and reinstall with the commands above 
 
 Cause in 0.1.0-era GitHub installs: the plugin used the `agents` service but declared only `tools` injection.
 
-Fix: install 0.1.1 or later. The runtime export and both manifests now require `tools` and `agents`, and CI checks that they remain aligned.
+Fix: use a source checkout whose runtime export and both manifests require `tools` and `agents`, then install its locally packed tarball. The current source and CI contract checks keep these declarations aligned; do not assume the published npm `0.1.0` has this fix.
 
 ## `Cannot find package '@deepseek-ai/dsh-tools'` or `@deepseek-ai/dsh-llm`
 
 Cause in an early 0.1.1 development build: the plugin statically imported host packages. A profile can provide the `tools` service while Node's ESM resolver still cannot reach that package from a third-party plugin directory.
 
-Fix: install the released 0.1.1 or later. The published plugin now registers native ToolDefinition objects through the injected service and has zero npm runtime dependencies. Do not install private copies of DSH internals into the profile as a workaround.
+Fix: use a source checkout containing the import-free registration fix and install its locally packed tarball. The current source registers native ToolDefinition objects through the injected service and declares no npm runtime dependencies. Do not install private copies of DSH internals into the profile as a workaround.
 
 ## Python cannot be started
 

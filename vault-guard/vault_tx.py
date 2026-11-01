@@ -13,7 +13,7 @@ from vault_lock import VaultLock, atomic_json
 from vault_path import vault_root
 
 
-TERMINAL_STATES = {"committed", "committed_recovered", "rolled_back"}
+TERMINAL_STATES = {"committed", "committed_recovered", "rolled_back", "incomplete_preserved"}
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -52,6 +52,35 @@ def _read_manifest(path: Path) -> dict[str, Any] | None:
         return None
 
 
+def _raw_append_state(operation: Mapping[str, Any]) -> str:
+    """Verify the exact append, never just its ID or the file's total size.
+
+    Old manifests may lack append_size. Use their recorded after_size when
+    available, otherwise hash the entire remaining tail. Never modify raw
+    history during verification, including incomplete writes or later appends.
+    Read errors other than a missing file must remain retryable, not terminal.
+    """
+    append_hash = operation.get("append_sha256")
+    try:
+        content = Path(str(operation["target"])).read_bytes()
+    except FileNotFoundError:
+        return "rolled_back"
+    start = int(operation.get("before_size") or 0)
+    if len(content) == start:
+        return "rolled_back"
+    if operation.get("append_size") is not None:
+        end = start + int(operation["append_size"])
+    elif operation.get("after_size") is not None:
+        end = int(operation["after_size"])
+    else:
+        end = len(content)
+    if start < 0 or end <= start or len(content) < end:
+        return "incomplete_preserved"
+    if append_hash and sha256_bytes(content[start:end]) == append_hash:
+        return "committed_recovered"
+    return "incomplete_preserved"
+
+
 def recover_incomplete(memory: Path, *, exclude: str | None = None) -> list[dict[str, str]]:
     """Recover non-terminal transactions. The caller must own the Vault lock."""
     root = memory / ".vault-transactions"
@@ -69,31 +98,18 @@ def recover_incomplete(memory: Path, *, exclude: str | None = None) -> list[dict
         operations = data.get("operations") if isinstance(data.get("operations"), list) else []
         raw_entries = [op for op in operations if isinstance(op, dict) and op.get("kind") == "raw_append"]
         if raw_entries:
-            committed = True
-            for op in raw_entries:
-                target = Path(str(op.get("target")))
-                marker = str(op.get("entry_id") or "")
-                before_size = int(op.get("before_size") or 0)
-                append_hash = str(op.get("append_sha256") or "")
-                after_size = op.get("after_size")
-                try:
-                    data = target.read_bytes()
-                except OSError:
-                    data = b""
-                if after_size is not None and len(data) == int(after_size):
-                    # 正常提交路径：大小精确匹配
-                    ok = True
-                elif append_hash and len(data) >= before_size and len(data) > before_size:
-                    # 崩溃恢复路径：文件尾部（追加起点之后）必须是追加块的完整字节，
-                    # 用 append_sha256 验证——截断的半写入会在这里被识别为未完成
-                    ok = sha256_bytes(data[before_size:]) == append_hash
-                else:
-                    ok = bool(marker and f'"id": "{marker}"' in data.decode("utf-8", errors="replace"))
-                committed = committed and ok
-            data["state"] = "committed_recovered" if committed else "rolled_back"
-            data["recovery_reason"] = (
-                "raw-entry-verified" if committed else "raw-entry-absent-or-truncated"
+            states = [_raw_append_state(op) for op in raw_entries]
+            data["state"] = (
+                "committed_recovered" if all(state == "committed_recovered" for state in states)
+                else "rolled_back" if all(state == "rolled_back" for state in states)
+                else "incomplete_preserved"
             )
+            data["recovery_reason"] = (
+                "raw-entry-verified" if data["state"] == "committed_recovered" else "raw-entry-unverified"
+            )
+            # Raw history is append-only: preserve partial bytes for inspection
+            # and distinguish them from a rollback that left no appended bytes.
+            data["raw_history_preserved"] = True
         elif state in {"committing", "recovery_required"}:
             for op in reversed(operations):
                 if not isinstance(op, dict) or op.get("kind") != "replace":
@@ -379,6 +395,7 @@ class VaultTransaction:
             "entry_id": entry_id,
             "before_size": target.stat().st_size if target.exists() else 0,
             "append_sha256": sha256_bytes(header + block),
+            "append_size": len(header + block),
         }
         self.data["operations"] = [operation]
         self._set_state("validated")
@@ -390,6 +407,8 @@ class VaultTransaction:
                 view = memoryview(header + block)
                 while view:
                     count = os.write(fd, view)
+                    if count <= 0:
+                        raise OSError("raw append made no write progress")
                     view = view[count:]
                 os.fsync(fd)
             finally:
@@ -409,12 +428,21 @@ class VaultTransaction:
             atomic_json(self.tx_dir / "receipt.json", receipt)
             return receipt
         except Exception as exc:
+            verification_error = None
             try:
-                present = f'"id": "{entry_id}"' in target.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                present = False
-            state = "committed_recovered" if present else "rolled_back"
-            self._set_state(state, error=f"{type(exc).__name__}: {exc}")
+                state = _raw_append_state(operation)
+            except OSError as verify_exc:
+                # A temporary read failure is not evidence that the append
+                # failed. Leave it non-terminal for the next lock holder.
+                state = "recovery_required"
+                verification_error = f"{type(verify_exc).__name__}: {verify_exc}"
+            self._set_state(
+                state,
+                error=f"{type(exc).__name__}: {exc}",
+                raw_history_preserved=True,
+                recovery_reason="raw-entry-verified" if state == "committed_recovered" else "raw-entry-unverified",
+                **({"verification_error": verification_error} if verification_error else {}),
+            )
             atomic_json(self.tx_dir / "receipt.json", {
                 "schema": "dsh-vault-transaction-receipt-v1",
                 "transaction_id": self.transaction_id,

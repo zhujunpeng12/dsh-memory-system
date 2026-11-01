@@ -118,3 +118,13 @@ test('数值参数转字符串传递', () => {
   const i = inv.argv.indexOf('--max-bytes')
   assert.equal(inv.argv[i + 1], '14000')
 })
+
+
+test('raw lifecycle flags are explicit and history requires raw', () => {
+  const inv = buildToolInvocation('memory_recall', { query: 'memory', includeRaw: true, includeHistory: true })
+  assert.ok(inv.argv.includes('--include-raw'))
+  assert.ok(inv.argv.includes('--include-history'))
+  assert.throws(() => buildToolInvocation('memory_recall', { query: 'memory', includeHistory: true }), /requires includeRaw/)
+  const normal = buildToolInvocation('memory_recall', { query: 'memory' })
+  assert.ok(!normal.argv.includes('--include-raw'))
+})

@@ -88,3 +88,22 @@ python "$HOME\.dsh\vault-guard\vault-probe.py" "<文件>" --needle-file "<UTF-8�
 - 预设、Skill、搜索、编码、review 与长任务：`~/.dsh/docs/AGENT_OPERATIONS.md`
 - 每次会话必须遵守的最小规则：`~/.dsh/AGENTS.md`
 - 优化前完整快照：`~/.dsh/archive/memory-optimization-20260814-231700/`
+
+
+## raw 写入异常与恢复
+
+raw 事务恢复按追加起点、追加字节数和 SHA-256 验证完整追加块；不会只凭条目 ID 或文件大小宣告成功。旧 manifest 没有追加字节数时，使用已记录的结束大小或完整尾部进行哈希验证。
+
+- `committed_recovered`：已验证完整追加块，后续追加内容不受影响。
+- `rolled_back`：未发现本次追加的字节；不会改动已有 raw。
+- `incomplete_preserved`：追加内容残缺或无法验证，原始字节保留供人工检查，**不是成功提交，也不是已经回滚**。该状态不再自动重试；`check.py` 和 `govern.py` 持续显示警告。请核查 manifest/receipt 与原始内容，不要把半写入当作已提交事实，也不要原地删改历史 raw。
+- `recovery_required`：发生临时读取失败等未决错误，下次获得写锁时重试恢复；不是确认写入失败。
+
+对于缺少哈希的旧 raw manifest，系统不会仅凭 ID 推断成功；需要人工核查。任何自动恢复都不会截断 raw 或移除后来追加的数据。
+
+
+## 显式 raw 生命周期召回
+
+默认冷召回仍不读取 raw。显式传入 `recall.py --include-raw` 时，按已有 `dsh-entry` 的完整正文哈希与 `supersedes` 关系排除已替代/撤销条目，再做排序和预算裁剪。`--include-raw --include-history` 用于审计历史，输出状态标签；不会删除历史。插件对应参数为 `includeRaw` / `includeHistory`。
+
+遇到重复 ID、环、竞争纠错、缺失目标或损坏内容时保守保留证据并输出诊断，不猜测哪个版本正确。普通 Markdown 提炼摘要没有生命周期 ID，因此本次不自动使旧摘要失效。详见 [设计、边界与参考来源](../docs/raw-lifecycle-design.md) 和 [可复现的合成评测](../docs/recall-evaluation.md)。

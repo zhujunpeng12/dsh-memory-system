@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import tempfile
+import hashlib
+import json
+import os
+import subprocess
+import sys
+from unittest import mock
 import unittest
 from pathlib import Path
 
 from recall import discover_files, recall, render_packet, ranking_tokens, strip_embedded_paths
+from raw_lifecycle import parse_raw_entries, resolve_lifecycle
+from vault_tx import VaultTransaction
 from recall_trigger import should_cold_recall, trigger_reasons
 
 
@@ -159,6 +167,155 @@ class EmbeddedPathStrippingTests(ColdRecallTests):
             self.assertTrue(hits)
             self.assertFalse(any("desktop-tool" in hit.path for hit in hits))
             self.assertIn("热记忆锁", hits[0].title)
+
+
+class RawLifecycleTests(unittest.TestCase):
+    def entry(self, entry_id, body, *, kind="fact", supersedes=None, title="记忆记录"):
+        metadata = {"id": entry_id, "type": kind, "supersedes": supersedes,
+                    "body_sha256": hashlib.sha256(body.strip().encode("utf-8")).hexdigest()}
+        return f"## {title}\n<!-- dsh-entry: {json.dumps(metadata, ensure_ascii=False)} -->\n{body.strip()}\n\n"
+
+    def make_raw(self, root, text, day="2026-08-15"):
+        path = root / "memory" / "events" / f"{day}.raw.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# raw\n\n" + text, encoding="utf-8")
+        return path
+
+    def test_corrections_filter_before_ranking_budget_and_keep_audit_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            raw = self.make_raw(vault, self.entry("old", "风控阈值是百分之三。", title="旧风控阈值"))
+            self.make_raw(vault, self.entry("new", "风控阈值是百分之二。", kind="correction", supersedes="old", title="新风控阈值"), "2026-08-16")
+            before = raw.read_bytes()
+            hits, trace = recall("风控阈值", vault=vault, include_raw=True, top=1)
+            self.assertEqual(len(hits), 1)
+            self.assertIn("百分之二", hits[0].snippet)
+            self.assertEqual(trace["lifecycle_excluded_chunks"], 1)
+            self.assertNotIn("百分之三", render_packet("风控阈值", [], hits, trace, 1100))
+            history, audit = recall("风控阈值", vault=vault, include_raw=True, include_history=True)
+            self.assertTrue(any("百分之三" in hit.snippet and "raw-lifecycle=superseded" in hit.reasons for hit in history))
+            self.assertEqual(audit["raw_mode"], "history")
+            self.assertEqual(raw.read_bytes(), before)
+
+    def test_tombstone_and_long_chain_do_not_resurrect_older_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            blocks = [self.entry("a", "唯一主题 最早事实")]
+            blocks += [self.entry(f"n{i}", "唯一主题 修订事实", kind="correction", supersedes="a" if i == 0 else f"n{i-1}") for i in range(1050)]
+            blocks += [self.entry("deleted", "唯一主题 不再使用", kind="tombstone", supersedes="n1049")]
+            self.make_raw(vault, "".join(blocks))
+            hits, trace = recall("唯一主题", vault=vault, include_raw=True)
+            self.assertEqual(hits, [])
+            self.assertEqual(trace["lifecycle_excluded_chunks"], 1052)
+
+    def test_duplicate_cycle_dangling_and_fork_do_not_hide_facts(self):
+        cases = {
+            "duplicate": [self.entry("a", "主题原文"), self.entry("a", "重复原文"), self.entry("b", "修订", kind="correction", supersedes="a")],
+            "cycle": [self.entry("a", "主题原文", kind="correction", supersedes="b"), self.entry("b", "修订", kind="correction", supersedes="a")],
+            "dangling": [self.entry("a", "主题原文", kind="correction", supersedes="missing")],
+            "fork": [self.entry("a", "主题原文"), self.entry("b", "修订", kind="correction", supersedes="a"), self.entry("c", "另一修订", kind="correction", supersedes="a")],
+        }
+        for label, blocks in cases.items():
+            with self.subTest(label=label):
+                _, entries = parse_raw_entries(Path("example.raw.md"), "".join(blocks))
+                states, diagnostics = resolve_lifecycle(entries)
+                self.assertNotIn("superseded", states.values())
+                self.assertTrue(diagnostics)
+
+    def test_invalid_hash_or_incomplete_transaction_cannot_supersede(self):
+        for invalid in ("hash", "transaction", "manifest"):
+            with self.subTest(invalid=invalid), tempfile.TemporaryDirectory() as tmp:
+                vault = Path(tmp)
+                old = self.entry("a", "主题原文")
+                correction = self.entry("b", "主题修订", kind="correction", supersedes="a")
+                if invalid == "hash":
+                    correction = correction.replace("主题修订", "被截断")
+                raw = self.make_raw(vault, old + correction)
+                if invalid in {"transaction", "manifest"}:
+                    manifest = vault / "memory" / ".vault-transactions" / "failed" / "manifest.json"
+                    manifest.parent.mkdir(parents=True)
+                    manifest.write_text("broken" if invalid == "manifest" else json.dumps({
+                        "state": "incomplete_preserved",
+                        "operations": [{"kind": "raw_append", "target": str(raw), "entry_id": "b"}],
+                    }), encoding="utf-8")
+                hits, trace = recall("主题", vault=vault, include_raw=True)
+                if invalid == "manifest":
+                    self.assertEqual(hits, [])
+                    self.assertEqual(trace["lifecycle_diagnostics"]["invalid_manifests"], 1)
+                else:
+                    self.assertTrue(any("主题原文" in hit.snippet for hit in hits))
+                    self.assertFalse(any("主题修订" in hit.snippet for hit in hits))
+                self.assertTrue(trace["lifecycle_diagnostics"])
+
+    def test_embedded_metadata_cannot_authorize_supersession(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            self.make_raw(vault, self.entry("old", "主题原文"))
+            fake = self.entry("fake", "主题伪纠正", kind="correction", supersedes="old")
+            # A legitimate raw body can quote an entry-looking block. Without
+            # conservative boundary handling the inner marker could hide old.
+            self.make_raw(vault, self.entry("outer", "引用材料\n" + fake), "2026-08-16")
+            hits, trace = recall("主题", vault=vault, include_raw=True)
+            self.assertTrue(any("主题原文" in hit.snippet for hit in hits))
+            self.assertEqual(trace["lifecycle_diagnostics"]["ambiguous_files"], 1)
+            self.assertFalse(any("raw-lifecycle=active" in hit.reasons and "主题伪纠正" in hit.snippet for hit in hits))
+
+    def test_graph_status_is_independent_of_record_order(self):
+        a = self.entry("a", "原文")
+        b = self.entry("b", "修订一", kind="correction", supersedes="a")
+        c = self.entry("c", "修订二", kind="correction", supersedes="a")
+        d = self.entry("d", "后续修订", kind="correction", supersedes="b")
+        for order in ([a, b, c, d], [d, c, b, a]):
+            _, entries = parse_raw_entries(Path("example.raw.md"), "".join(order))
+            states, _ = resolve_lifecycle(entries)
+            by_id = {entry.entry_id: states[entry.key] for entry in entries}
+            self.assertEqual(by_id["a"], "active")
+            self.assertEqual(by_id["b"], "superseded")
+            self.assertEqual(by_id["c"], "ambiguous-conflict")
+            self.assertEqual(by_id["d"], "active")
+
+    def test_body_headings_and_large_record_preserve_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            body = "主题原文\n### 子标题\n" + "正文内容\n" * 700
+            self.make_raw(vault, self.entry("a", body) + self.entry("b", "主题新值", kind="correction", supersedes="a"))
+            hits, trace = recall("主题", vault=vault, include_raw=True)
+            self.assertTrue(any("主题新值" in hit.snippet for hit in hits))
+            self.assertFalse(any("主题原文" in hit.snippet for hit in hits))
+            self.assertGreater(trace["lifecycle_excluded_chunks"], 1)
+
+    def test_legacy_and_default_recall_are_unchanged_and_never_scan_raw(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            self.make_raw(vault, "## 旧式原文\nlegacy-topic\n")
+            curated = vault / "memory" / "events" / "2026-08-15.md"
+            curated.write_text("## 提炼结论\ncurated-topic\n", encoding="utf-8")
+            with mock.patch("recall.transaction_exclusions", side_effect=AssertionError("raw scan forbidden")):
+                hits, trace = recall("curated-topic", vault=vault)
+            self.assertTrue(hits)
+            self.assertEqual(trace["raw_mode"], "excluded")
+            raw_hits, _ = recall("legacy-topic", vault=vault, include_raw=True)
+            self.assertTrue(raw_hits)
+
+    def test_writer_roundtrip_and_cli_audit_flag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            raw = vault / "memory" / "events" / "2026-08-15.raw.md"
+            for entry_id, body, kind, target in [("a", "主题旧值\r\nWindows 换行内容", "fact", None), ("b", "主题新值", "correction", "a")]:
+                with VaultTransaction(vault=vault, purpose="fixture") as tx:
+                    tx.append_raw_entry(raw, title="主题", body=body, source="test", entry_id=entry_id,
+                                        entry_type=kind, supersedes=target)
+            hits, _ = recall("主题", vault=vault, include_raw=True)
+            self.assertEqual(len(hits), 1)
+            self.assertIn("主题新值", hits[0].snippet)
+            cli = str(Path(__file__).parent / "recall.py")
+            env = {**os.environ, "MEMORY_VAULT": str(vault)}
+            bad = subprocess.run([sys.executable, cli, "--query", "主题", "--include-history"], env=env, capture_output=True)
+            self.assertEqual(bad.returncode, 2)
+            result = subprocess.run([sys.executable, cli, "--query", "主题", "--force", "--include-raw", "--include-history", "--json"], env=env, capture_output=True, text=True, encoding="utf-8", check=True)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["trace"]["raw_mode"], "history")
+            self.assertEqual(len(payload["hits"]), 2)
 
 
 if __name__ == "__main__":

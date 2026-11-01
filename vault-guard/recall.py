@@ -15,10 +15,11 @@ import sys
 import time
 import unicodedata
 from collections import Counter, defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import date
 from pathlib import Path
 
+from raw_lifecycle import RawEntry, parse_raw_entries, resolve_lifecycle, transaction_exclusions
 from recall_trigger import has_recall_subject, should_cold_recall, trigger_reasons
 
 try:
@@ -55,6 +56,8 @@ class Chunk:
     title: str
     text: str
     line: int
+    raw_entry: RawEntry | None = None
+    lifecycle: str | None = None
 
 
 @dataclass
@@ -146,24 +149,32 @@ def _split_large(chunk: Chunk, max_bytes: int = 2400) -> list[Chunk]:
     for offset, line in enumerate(lines):
         cost = len((line + "\n").encode("utf-8"))
         if current and used + cost > max_bytes:
-            pieces.append(Chunk(chunk.path, chunk.source_type, chunk.title, "\n".join(current), current_line))
+            pieces.append(replace(chunk, text="\n".join(current), line=current_line))
             current = []
             used = 0
             current_line = chunk.line + offset
         current.append(line)
         used += cost
     if current:
-        pieces.append(Chunk(chunk.path, chunk.source_type, chunk.title, "\n".join(current), current_line))
+        pieces.append(replace(chunk, text="\n".join(current), line=current_line))
     return pieces
 
 
 def parse_chunks(path: Path, vault: Path) -> list[Chunk]:
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            file_text = handle.read()
+        lines = file_text.splitlines()
     except (OSError, UnicodeDecodeError):
         # 非 UTF-8/损坏文件：跳过该文件而不是崩掉整个召回
         return []
     stype = source_type(path, vault)
+    raw_chunks: list[Chunk] = []
+    if stype == "raw":
+        prefix, entries = parse_raw_entries(path, file_text)
+        lines = prefix.splitlines()
+        for entry in entries:
+            raw_chunks.extend(_split_large(Chunk(path, stype, entry.title, entry.text, entry.line, entry)))
     headings: dict[int, str] = {}
     chunks: list[Chunk] = []
     body: list[str] = []
@@ -193,7 +204,7 @@ def parse_chunks(path: Path, vault: Path) -> list[Chunk]:
                 start_line = number
             body.append(line)
     flush()
-    return chunks
+    return chunks + raw_chunks
 
 
 def bm25_scores(chunks: list[Chunk], query_tokens: list[str]) -> list[float]:
@@ -314,11 +325,35 @@ def recall(
     vault: Path = VAULT,
     cwd: Path | None = None,
     include_raw: bool = False,
+    include_history: bool = False,
     top: int = 8,
 ) -> tuple[list[Hit], dict[str, object]]:
+    if include_history and not include_raw:
+        raise ValueError("include_history requires include_raw")
     started = time.perf_counter()
     files = discover_files(vault, include_raw=include_raw)
     chunks = [chunk for path in files for chunk in parse_chunks(path, vault)]
+    all_chunks = len(chunks)
+    lifecycle_diagnostics: dict[str, int] = {}
+    excluded_chunks = 0
+    raw_mode = "excluded"
+    if include_raw:
+        raw_mode = "history" if include_history else "effective"
+        entries = list({chunk.raw_entry.key: chunk.raw_entry for chunk in chunks if chunk.raw_entry}.values())
+        excluded, invalid_manifests = transaction_exclusions(vault, entries)
+        states, lifecycle_diagnostics = resolve_lifecycle(entries, excluded)
+        if invalid_manifests:
+            lifecycle_diagnostics["invalid_manifests"] = invalid_manifests
+        selected_chunks = []
+        for chunk in chunks:
+            if chunk.raw_entry:
+                chunk.lifecycle = states[chunk.raw_entry.key]
+                if not include_history and (chunk.lifecycle in {"superseded", "tombstone", "invalid", "uncommitted"}
+                                            or chunk.raw_entry.kind == "tombstone"):
+                    excluded_chunks += 1
+                    continue
+            selected_chunks.append(chunk)
+        chunks = selected_chunks
     clean_query = strip_embedded_paths(query)
     query_tokens = ranking_tokens(clean_query)
     lexical = bm25_scores(chunks, query_tokens)
@@ -326,6 +361,8 @@ def recall(
     ranked: list[tuple[float, Chunk, list[str]]] = []
     for chunk, bm25 in zip(chunks, lexical):
         extra, reasons = metadata_score(chunk, clean_query, query_tokens, cwd_projects, vault)
+        if chunk.lifecycle:
+            reasons.append(f"raw-lifecycle={chunk.lifecycle}")
         lexical_match = bm25 > 0 or any(
             reason.startswith(("exact-", "title-token", "path-token"))
             for reason in reasons
@@ -361,6 +398,10 @@ def recall(
         "vector": "disabled",
         "files": len(files),
         "chunks": len(chunks),
+        "chunks_before_lifecycle": all_chunks,
+        "raw_mode": raw_mode,
+        "lifecycle_excluded_chunks": excluded_chunks,
+        "lifecycle_diagnostics": lifecycle_diagnostics,
         "candidates": len(ranked),
         "selected": len(hits),
         "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
@@ -374,6 +415,9 @@ def render_packet(query: str, reasons: list[str], hits: list[Hit], trace: dict[s
         f"查询：{query}\n"
         f"触发：{', '.join(reasons) if reasons else 'manual-force'}\n"
         f"模式：{trace['mode']}；vector={trace['vector']}；只对本轮有效\n"
+        + (f"raw：{trace.get('raw_mode')}；排除={trace.get('lifecycle_excluded_chunks', 0)}；"
+           f"诊断={json.dumps(trace.get('lifecycle_diagnostics', {}), ensure_ascii=False)}\n"
+           if trace.get("raw_mode", "excluded") != "excluded" else "")
     )
     output = header
     for index, hit in enumerate(hits, start=1):
@@ -404,11 +448,14 @@ def main(argv=None) -> int:
     parser.add_argument("--cwd", default=str(Path.cwd()))
     parser.add_argument("--max-bytes", type=int, default=4200)
     parser.add_argument("--top", type=int, default=8)
-    parser.add_argument("--include-raw", action="store_true")
+    parser.add_argument("--include-raw", action="store_true", help="include raw evidence with explicit lifecycle filtering")
+    parser.add_argument("--include-history", action="store_true", help="audit raw superseded/invalid entries (requires --include-raw)")
     parser.add_argument("--force", action="store_true", help="run even when automatic trigger policy does not match")
     parser.add_argument("--decide-only", action="store_true")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    if args.include_history and not args.include_raw:
+        parser.error("--include-history requires --include-raw")
     # Windows 控制台下 argv 可能带孤立代理（GBK 解码 UTF-8 payload 产物），
     # 会在下游 clip_utf8 严格 UTF-8 编码处崩溃——入口做一次 replace 往返剥离。
     args.query = args.query.encode("utf-8", "replace").decode("utf-8")
@@ -426,6 +473,7 @@ def main(argv=None) -> int:
         vault=VAULT,
         cwd=Path(args.cwd),
         include_raw=args.include_raw,
+        include_history=args.include_history,
         top=max(1, min(args.top, 20)),
     )
     if args.json:

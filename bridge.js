@@ -28,6 +28,9 @@ export function buildToolInvocation(toolName, args = {}, cwd = '') {
     }
     case 'memory_recall': {
       const argv = ['--query', args.query, '--cwd', args.cwd ?? here]
+      if (args.includeHistory && !args.includeRaw) throw new TypeError('includeHistory requires includeRaw')
+      if (args.includeRaw) argv.push('--include-raw')
+      if (args.includeHistory) argv.push('--include-history')
       if (args.force) argv.push('--force')
       if (args.top) argv.push('--top', String(args.top))
       return { script: 'recall.py', argv }
