@@ -2,14 +2,18 @@
 
 This page covers plugin loading and first-run failures. It never asks you to upload memory files, credentials, or private paths.
 
-## Supported baseline
+## Documented compatibility baseline
 
-| Component | Supported/tested baseline |
+| Component | Documented baseline |
 |---|---|
 | DeepSeek Harness | `0.1.0-rc.7` |
 | Node.js | 22 or 24 |
 | Python | 3.10+ available as `python`, or set `PYTHON` |
 | Storage | `~/.dsh-memory/` by default; optional `MEMORY_VAULT` override |
+
+This is the documented compatibility target, not evidence that every listed combination was tested against a live DSH host. Local CLI demos, mocked plugin contract tests and package checks do not verify live session injection or approval dialogs. Verify installation and behavior in your target host environment.
+
+The GitHub command below follows the default branch. Source-only demo and raw-lifecycle improvements described on a feature branch are not necessarily present there or in the published npm `0.1.1` package; inspect the checkout and its version notes.
 
 ## Clean install or upgrade
 
