@@ -170,6 +170,32 @@ class TransactionTests(unittest.TestCase):
                     tx.commit_noop()
                 self.assertFalse((memory / ".vault.lock").exists())
 
+    def test_raw_append_receipt_matches_exact_written_bytes(self) -> None:
+        for prefix in (b"", b"# existing history\r\n"):
+            with self.subTest(existing=bool(prefix)), tempfile.TemporaryDirectory() as tmp:
+                vault = Path(tmp) / "vault"
+                target = vault / "memory" / "events" / "2026-08-15.raw.md"
+                target.parent.mkdir(parents=True)
+                target.write_bytes(prefix)
+
+                with VaultTransaction(vault=vault, purpose="raw-byte-integrity") as tx:
+                    receipt = tx.append_raw_entry(
+                        target, title="entry", body="first line\nsecond line 中文",
+                        source="unit-test", entry_id="entry-1",
+                    )
+
+                written = target.read_bytes()
+                appended = written[len(prefix):]
+                operation = receipt["operations"][0]
+                self.assertEqual(written[:len(prefix)], prefix)
+                self.assertIn("first line\nsecond line 中文\n\n".encode("utf-8"), appended)
+                self.assertNotIn(b"\r\n", appended)
+                self.assertEqual(operation["before_size"], len(prefix))
+                self.assertEqual(operation["append_size"], len(appended))
+                self.assertEqual(operation["after_size"], len(written))
+                self.assertEqual(operation["append_sha256"], sha256_bytes(appended))
+                self.assertEqual(operation["after_sha256"], sha256_bytes(written))
+
     def test_raw_partial_write_with_entry_id_is_not_committed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "vault"

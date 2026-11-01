@@ -402,7 +402,10 @@ class VaultTransaction:
         self.lock.assert_owned()
         self._set_state("committing")
         try:
-            fd = os.open(target, os.O_CREAT | os.O_APPEND | os.O_WRONLY)
+            # On Windows, text-mode descriptors translate LF to CRLF, which
+            # would invalidate the recorded append byte count and hash.
+            flags = os.O_CREAT | os.O_APPEND | os.O_WRONLY | getattr(os, "O_BINARY", 0)
+            fd = os.open(target, flags)
             try:
                 view = memoryview(header + block)
                 while view:
