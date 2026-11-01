@@ -6,7 +6,7 @@ Inspection date: **2026-10-31 UTC**. This is an information-architecture review 
 
 - Lead with a user outcome and audience, not the internal six-layer vocabulary.
 - Offer one local, synthetic first-memory round trip with inspectable persistence and explicit correction history; distinguish engine evidence from host integration testing.
-- Separate default-branch installation, published npm `0.1.1`, and source-only improvements. A repeated package version is not proof of feature availability.
+- Separate default-branch installation, published npm `0.1.0` (registry checked 2026-11-01), source version `0.1.1`, and source-only improvements. A repeated package version is not proof of feature availability.
 - Put prerequisites, write approval, data paths, model-input privacy boundaries and project-ranking limits near the setup steps.
 - Keep architecture and existing upstream acknowledgements, but put implementation depth after the first useful result.
 - Keep evaluation limitations visible. Do not infer popularity causes, promise growth, reuse another project's numbers or imply that a synthetic test is real-user accuracy.

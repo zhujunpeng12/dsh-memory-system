@@ -6,7 +6,7 @@ From a **source checkout containing `vault-guard/demo_memory.py`**, run:
 python vault-guard/demo_memory.py --lang en
 ```
 
-Requires Python 3.10+. No npm install, API key, model account, database or running DSH is needed. The script uses the real project CLI with synthetic data. If your checkout or installed package lacks this file, obtain a revision that includes it; the older npm 0.1.1 release should not be assumed to contain the demo.
+Requires Python 3.10+. No npm install, API key, model account, database or running DSH is needed. The script uses the real project CLI with synthetic data. If your checkout or installed package lacks this file, obtain a revision that includes it; the published npm `0.1.0` package does not include this new demo. The source version `0.1.1` is not a verified npm release. See the dated [registry check in the README](../README.en.md#dsh-memory-system).
 
 ## What actually runs
 
