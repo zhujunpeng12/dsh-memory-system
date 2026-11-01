@@ -16,7 +16,7 @@ Avoid repeating the same project decisions without putting your entire archive i
 
 **For:** individual and small-team DSH users working with Chinese project material who want to review their memories. **Not for:** multi-tenant access isolation, high-frequency concurrent writers, or guaranteed semantic understanding. Standalone Python retrieval also works without DSH or Obsidian.
 
-> **Version scope:** this page describes its source branch. On 2026-11-01, the [npm registry](https://registry.npmjs.org/@zhujunpeng12%2Fdsh-memory-system) listed `0.1.0` as both `latest` and the only published version. This source has `package.json` version `0.1.1`; **that does not mean npm 0.1.1 was published**. The first-memory demo, effective raw view and retrieval evaluation require a source checkout containing the relevant files. The GitHub install command below follows the repository default branch and **does not guarantee these improvements**.
+> **Version scope:** this page describes its source branch. The version in the source `package.json` does not establish that the version has been published; check the [npm registry](https://registry.npmjs.org/@zhujunpeng12%2Fdsh-memory-system) for published versions and `latest`. The first-memory demo, effective raw view and retrieval evaluation require a source checkout containing the relevant files. The GitHub install command below follows the repository default branch and **does not guarantee these improvements**.
 
 ## See a local round trip first
 
@@ -67,7 +67,7 @@ npm pack
 npx @deepseek-ai/dsh plugin --profile web add ./zhujunpeng12-dsh-memory-system-0.1.1.tgz
 ```
 
-The `0.1.1.tgz` filename comes from the source version; it identifies a locally packed archive, not a verified npm release. Check for `vault-guard/demo_memory.py` and `vault-guard/raw_lifecycle.py` before packing. Engine tests do not replace installation verification in your target DSH environment.
+The `0.1.1.tgz` filename comes from the source version and does not by itself establish the npm publication status. Check for `vault-guard/demo_memory.py` and `vault-guard/raw_lifecycle.py` before packing. Engine tests do not replace installation verification in your target DSH environment.
 
 For the first real memory, ask the agent to preview `memory_write`, inspect the content and path, then confirm the call with `apply=true`. Check the receipt and source file afterward: an agent saying “remembered” is not persistence evidence. Raw records do not automatically become hot summaries; explicitly use `memory_recall` with `includeRaw=true` when needed, or separately approve a curated project/rule note.
 
